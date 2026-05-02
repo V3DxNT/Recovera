@@ -9,8 +9,12 @@ async function runPrCreatorTest() {
     process.exit(0);
   }
 
-  // To run this test safely, set a repository you own.
-  const testRepo = process.env.TEST_GITHUB_REPO || "Priyanshu-Ku/Recovera"; 
+  // To run this test safely, explicitly set a repository you own.
+  const testRepo = process.env.TEST_GITHUB_REPO;
+  if (!testRepo) {
+    console.error("❌ Test skipped: TEST_GITHUB_REPO is not set in environment.");
+    process.exit(0);
+  }
 
   const testDiff = `
 diff --git a/test-file.txt b/test-file.txt
