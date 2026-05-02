@@ -3,7 +3,7 @@ import { Zap, GitMerge, LineChart, Code2, ShieldAlert, CloudCog, ArrowRight } fr
 
 export default function FeaturesGrid() {
   return (
-    <section className="py-32 bg-black text-white relative">
+    <section id="features" className="py-32 bg-black text-white relative">
       <div className="container mx-auto px-6 max-w-6xl">
         <div className="mb-20 max-w-2xl">
           <h2 className="text-3xl md:text-5xl font-medium tracking-tight mb-6">Uncompromising observability.</h2>

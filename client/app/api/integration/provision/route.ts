@@ -191,15 +191,15 @@ export async function POST(req: Request) {
     try {
       if (credentialId) {
         const user = await prisma.user.findFirst({
-           where: { cloudCredentials: { some: { id: credentialId } } }
+          where: { cloudCredentials: { some: { id: credentialId } } }
         });
         const credential = await prisma.cloudCredential.findUnique({ where: { id: credentialId } });
 
         if (credential && user) {
           const region = credential.region || "us-east-1";
-          
+
           console.log("Initiating automatic rollback of AWS resources...");
-          
+
           if (createdResources.includes("cloudwatch") && uniqueLogGroups.length > 0) {
             await removeSubscriptionFilters(credential, uniqueLogGroups);
           }
@@ -212,14 +212,14 @@ export async function POST(req: Request) {
           if (createdResources.includes("s3") && bucketName) {
             await deleteLogBucket(credential, bucketName);
           }
-          
+
           console.log("Rollback completed.");
         }
       }
     } catch (rollbackError) {
       console.error("Rollback failed:", rollbackError);
     }
-    
+
     // Update integration status to failed
     try {
       const session = await getServerSession(authOptions);

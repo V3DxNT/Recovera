@@ -23,7 +23,7 @@ export default function Hero() {
           transition={{ duration: 0.6, ease: [0.16, 1, 0.3, 1] }}
           className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-white/10 bg-white/[0.02] backdrop-blur-sm mb-8"
         >
-          <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse"></span>
+          <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse"></span>
           <span className="text-xs font-medium tracking-wide text-zinc-300">Recovera Engine</span>
           <ChevronRight className="w-3 h-3 text-zinc-500" />
         </motion.div>

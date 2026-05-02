@@ -1,6 +1,6 @@
 export default function Testimonials() {
   return (
-    <section className="py-32 bg-[#050505] relative overflow-hidden">
+    <section id="testimonials" className="py-32 bg-[#050505] relative overflow-hidden">
       {/* Background glow lines */}
       <div className="absolute top-0 w-full h-px bg-white/5"></div>
       <div className="absolute bottom-0 w-full h-px bg-white/5"></div>

@@ -3,10 +3,10 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { 
-  ArrowLeft, Activity, AlertCircle, CheckCircle2, 
-  Clock, Server, Shield, Terminal, GitBranch, 
-  Settings, ExternalLink, BarChart3, Search, 
+import {
+  ArrowLeft, Activity, AlertCircle, CheckCircle2,
+  Clock, Server, Shield, Terminal, GitBranch,
+  Settings, ExternalLink, BarChart3, Search,
   MoreHorizontal, Play, CheckCircle, Cloud, Zap, Loader2
 } from "lucide-react";
 import InstanceSelectModal from "./InstanceSelectModal";
@@ -37,10 +37,10 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
       const res = await fetch(`/api/incidents/${incidentId}/fix`, { method: "POST" });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      
+
       // Update local state
-      setIncidents(prev => prev.map(inc => 
-        inc.id === incidentId 
+      setIncidents(prev => prev.map(inc =>
+        inc.id === incidentId
           ? { ...inc, patches: [data.patch, ...(inc.patches || [])] }
           : inc
       ));
@@ -54,17 +54,17 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
   const handleOpenPR = async (incidentId: string, patchId: string) => {
     setGeneratingFix(prev => ({ ...prev, [incidentId]: true }));
     try {
-      const res = await fetch(`/api/incidents/${incidentId}/actions/open-pr`, { 
+      const res = await fetch(`/api/incidents/${incidentId}/actions/open-pr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ patchId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      
+
       // Update local state
-      setIncidents(prev => prev.map(inc => 
-        inc.id === incidentId 
+      setIncidents(prev => prev.map(inc =>
+        inc.id === incidentId
           ? { ...inc, actions: [data.action, ...(inc.actions || [])] }
           : inc
       ));
@@ -78,14 +78,14 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
   const handleApprove = async (incidentId: string, actionId: string) => {
     setGeneratingFix(prev => ({ ...prev, [incidentId]: true }));
     try {
-      const res = await fetch(`/api/incidents/${incidentId}/safety/approve`, { 
+      const res = await fetch(`/api/incidents/${incidentId}/safety/approve`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ actionId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      
+
       // Refresh incidents to get new state
       const freshRes = await fetch(`/api/incidents?repoFullName=${encodeURIComponent(repoName)}`);
       const freshData = await freshRes.json();
@@ -168,19 +168,19 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
   return (
     <div className="min-h-screen bg-black text-white pt-20 pb-12 px-8 max-w-6xl mx-auto">
       {/* Top Navigation & Header Area */}
-      <motion.div 
+      <motion.div
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         className="mb-8"
       >
-        <Link 
+        <Link
           href="/dashboard"
           className="inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-zinc-400 hover:text-white bg-transparent hover:bg-white/5 rounded-lg transition-all mb-6 -ml-3"
         >
           <ArrowLeft className="w-4 h-4" />
           Back to Dashboard
         </Link>
-        
+
         <div className="flex flex-col md:flex-row md:items-start justify-between gap-6">
           <div className="flex items-start gap-4">
             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-zinc-700 to-zinc-900 border border-white/10 flex items-center justify-center text-xl font-bold shadow-lg">
@@ -207,7 +207,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
               </div>
             </div>
           </div>
-          
+
           <div className="flex items-center gap-3">
             <button
               onClick={() => setShowInstanceModal(true)}
@@ -235,13 +235,12 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`pb-3 text-sm font-medium transition-all relative ${
-                activeTab === tab ? "text-white" : "text-zinc-500 hover:text-zinc-300"
-              }`}
+              className={`pb-3 text-sm font-medium transition-all relative ${activeTab === tab ? "text-white" : "text-zinc-500 hover:text-zinc-300"
+                }`}
             >
               {tab}
               {activeTab === tab && (
-                <motion.div 
+                <motion.div
                   layoutId="activeTab"
                   className="absolute bottom-0 left-0 right-0 h-0.5 bg-white rounded-t-full"
                 />
@@ -261,7 +260,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
               { label: "Open Alerts", value: metrics.openIssues, icon: Server, color: "text-amber-400" },
               { label: "Health Score", value: metrics.healthScore + "/100", icon: Shield, color: "text-blue-400" },
             ].map((stat, i) => (
-              <motion.div 
+              <motion.div
                 key={stat.label}
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -281,9 +280,9 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
 
           {/* Middle Row: Issues Over Time & Environment */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            
+
             {/* Issues Graph */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.2 }}
@@ -302,7 +301,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                   return (
                     <div key={idx} className="flex-1 flex flex-col items-center gap-2 group relative">
                       <div className="w-full bg-white/5 rounded-t-sm group-hover:bg-white/10 transition-all relative flex items-end justify-center" style={{ height: '100%' }}>
-                        <motion.div 
+                        <motion.div
                           initial={{ height: 0 }}
                           animate={{ height: `${heightPercentage}%` }}
                           transition={{ duration: 0.5, delay: 0.3 + (idx * 0.02) }}
@@ -321,7 +320,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
             </motion.div>
 
             {/* Environment Details */}
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
@@ -362,7 +361,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
           </div>
 
           {/* Project Timeline Detailed Box */}
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.4 }}
@@ -390,9 +389,9 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                   {/* Timeline Node */}
                   <div className="absolute left-[-35px] top-1">
                     <div className={`w-8 h-8 rounded-full border-4 border-black flex items-center justify-center shadow-lg
-                      ${event.type === 'issue' ? 'bg-red-500/20 text-red-500 border-red-500/10' : 
-                        event.type === 'alert' ? 'bg-amber-500/20 text-amber-500 border-amber-500/10' : 
-                        'bg-emerald-500/20 text-emerald-500 border-emerald-500/10'}`}
+                      ${event.type === 'issue' ? 'bg-red-500/20 text-red-500 border-red-500/10' :
+                        event.type === 'alert' ? 'bg-amber-500/20 text-amber-500 border-amber-500/10' :
+                          'bg-emerald-500/20 text-emerald-500 border-emerald-500/10'}`}
                     >
                       {event.type === 'issue' || event.type === 'alert' ? (
                         <AlertCircle className="w-4 h-4" />
@@ -418,10 +417,10 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                         </button>
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-wrap items-center gap-3 mt-4 pt-4 border-t border-white/5">
                       <span className={`text-[11px] uppercase font-bold tracking-wider px-2.5 py-1 rounded-md
-                        ${event.status === 'Resolved' || event.status === 'Success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' : 
+                        ${event.status === 'Resolved' || event.status === 'Success' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
                           'bg-amber-500/10 text-amber-400 border border-amber-500/20'}`}
                       >
                         {event.status}
@@ -469,22 +468,21 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                 const latestPatch = incident.patches?.[0];
                 const latestAction = incident.actions?.[0];
                 const isWorking = generatingFix[incident.id];
-                
+
                 return (
-                  <motion.div 
+                  <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    key={incident.id} 
+                    key={incident.id}
                     className="bg-zinc-900/40 border border-white/5 rounded-xl p-6"
                   >
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-3 mb-2">
                           <h3 className="text-lg font-semibold text-white">{incident.title}</h3>
-                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
-                            incident.status === 'resolved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
-                            'bg-amber-500/10 text-amber-400 border-amber-500/20'
-                          }`}>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${incident.status === 'resolved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' :
+                              'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                            }`}>
                             {incident.status}
                           </span>
                         </div>
@@ -492,7 +490,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                           Confidence Score: {(incident.confidence * 100).toFixed(0)}%
                         </p>
                       </div>
-                      
+
                       <div className="flex flex-col items-end gap-2">
                         {/* AutoSRE Actions */}
                         {!latestPatch && incident.status !== 'resolved' && (
@@ -505,7 +503,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                             Generate Fix
                           </button>
                         )}
-                        
+
                         {latestPatch && latestPatch.validationStatus === 'passed' && !latestAction && (
                           <button
                             onClick={() => handleOpenPR(incident.id, latestPatch.id)}
@@ -516,7 +514,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                             Open PR
                           </button>
                         )}
-                        
+
                         {latestAction && latestAction.status === 'pending_approval' && (
                           <div className="flex flex-col items-end gap-2">
                             <span className="text-xs text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded">
@@ -532,7 +530,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                             </button>
                           </div>
                         )}
-                        
+
                         {latestAction && latestAction.status === 'completed' && (
                           <a href={latestAction.metadata?.prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
                             <ExternalLink className="w-4 h-4" />
@@ -541,15 +539,14 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                         )}
                       </div>
                     </div>
-                    
+
                     {/* Details if patch generated */}
                     {latestPatch && (
                       <div className="mt-4 p-4 bg-black/40 border border-white/5 rounded-lg text-sm">
                         <div className="flex items-center justify-between mb-2">
                           <span className="text-zinc-400">Patch Status:</span>
-                          <span className={`${
-                            latestPatch.validationStatus === 'passed' ? 'text-emerald-400' : 'text-red-400'
-                          }`}>
+                          <span className={`${latestPatch.validationStatus === 'passed' ? 'text-emerald-400' : 'text-red-400'
+                            }`}>
                             {latestPatch.validationStatus.toUpperCase()}
                           </span>
                         </div>

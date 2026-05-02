@@ -34,9 +34,10 @@ export default function Navbar() {
           </div>
 
           <nav className="hidden md:flex gap-6">
-            <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Products</Link>
-            <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Enterprise</Link>
-            <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Customers</Link>
+            <Link href="#features" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Product</Link>
+            <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Docs</Link>
+            <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Changelog</Link>
+            <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Pricing</Link>
           </nav>
         </div>
 
