@@ -39,7 +39,7 @@ async function main() {
     console.log("Decision Path:", report1.decision_path);
     console.log("Action Taken:", report1.action_taken);
     console.log("Confidence:", report1.confidence);
-    console.log("Root Cause:", report1.raw_output?.root_cause || report1.summary);
+    console.log("Root Cause:", report1.raw_output?.rootCauseSummary || report1.summary);
     console.log("\n💬 Slack Payload Preview:");
     console.log(JSON.stringify(report1.notification, null, 2));
 

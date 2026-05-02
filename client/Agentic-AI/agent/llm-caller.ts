@@ -142,12 +142,14 @@ export async function callLLM(input: AgentInput, systemPrompt: string): Promise<
   
   if (process.env.AGENT_MOCK === "true") {
     return JSON.stringify({
-      root_cause: "Mocked root cause",
+      rootCauseSummary: "Mocked root cause summary",
+      failureMechanism: "Mocked failure mechanism",
+      likelySubsystem: "Mocked subsystem",
+      likelyFiles: [{ path: "mocked/path.ts", reason: "Mocked reason", confidence: 0.90 }],
+      fixStrategy: ["Step 1", "Step 2"],
+      recommendedAction: "generate_fix",
       confidence: 0.90,
-      action: "fix_s3_public_access",
-      reasoning: "Mocked reasoning",
-      requires_approval: false,
-      evidence: ["Mocked evidence"]
+      evidence: ["Mocked evidence log-123"]
     });
   }
 

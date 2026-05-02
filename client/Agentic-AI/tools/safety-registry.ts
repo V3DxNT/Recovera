@@ -4,12 +4,12 @@ import { SafetyClass } from "../agent/types";
 
 export function getSafetyClass(action: string): SafetyClass {
   switch (action) {
-    case "fix_s3_public_access":
+    case "generate_fix":
       return "safe";
-    case "restrict_iam_policy":
+    case "rollback":
       return "needs_approval";
-    case "close_security_group_port":
-      return "needs_approval";
+    case "human_only":
+      return "blocked";
     case "alert_only":
       return "safe";
     case "unknown":

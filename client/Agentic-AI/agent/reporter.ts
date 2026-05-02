@@ -42,7 +42,7 @@ export async function buildReport(
   if (process.env.AGENT_MOCK !== "true" && input.event !== "UNKNOWN" && decision.reason !== "parse_error" && decision.reason !== "both_providers_failed") {
     try {
       const summaryPrompt = `Summarize the following incident reasoning in 2 short sentences for a non-technical manager. Do not use markdown.`;
-      const summaryInput = `Incident: ${input.event} on ${input.metadata.resource}. Reasoning: ${output.reasoning}`;
+      const summaryInput = `Incident: ${input.event} on ${input.metadata.resource}. Reasoning: ${output.failureMechanism}`;
       const generated = await callLLM(
         { ...input, logs: "", resource_state: { type: "summary", config: {} } }, 
         summaryPrompt + "\\n\\n" + summaryInput
@@ -51,7 +51,7 @@ export async function buildReport(
       // Attempt to extract text if it returned a JSON object by accident, or just use as-is if plain text.
       try {
         const parsed = JSON.parse(generated);
-        summary = parsed.summary || parsed.root_cause || fallbackSummary;
+        summary = parsed.summary || parsed.rootCauseSummary || fallbackSummary;
       } catch {
         summary = generated.trim();
       }
@@ -65,7 +65,7 @@ export async function buildReport(
     text: `[Recovera] ${input.event} detected on ${input.metadata.resource}`,
     blocks: [
       { type: "header", text: { type: "plain_text", text: `[Recovera] ${input.event} detected on ${input.metadata.resource}` } },
-      { type: "section", text: { type: "mrkdwn", text: `*Root cause:* ${output.root_cause}` } },
+      { type: "section", text: { type: "mrkdwn", text: `*Root cause:* ${output.rootCauseSummary}` } },
       { type: "section", text: { type: "mrkdwn", text: `*Confidence:* ${(output.confidence * 100).toFixed(0)}% · *Risk score:* ${(risk_score * 100).toFixed(0)}%` } },
       { type: "section", text: { type: "mrkdwn", text: `*Action:* ${decision.action} · *Status:* ${decision.path}` } },
       { type: "divider" },
@@ -76,7 +76,7 @@ export async function buildReport(
   return {
     incident_id: input.incident_id,
     summary,
-    root_cause: output.root_cause,
+    root_cause: output.rootCauseSummary,
     action_taken: decision.action,
     decision_path: decision.path,
     verification,

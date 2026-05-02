@@ -33,11 +33,13 @@ describe("Recovera Agentic AI - Integration Tests", () => {
   // 1. S3_PUBLIC happy path
   it("Scenario 1: S3_PUBLIC happy path results in auto_fix", async () => {
     mockCallLLM.mockResolvedValueOnce(JSON.stringify({
-      root_cause: "Public bucket",
+      rootCauseSummary: "Public bucket",
+      failureMechanism: "Fix it",
+      likelySubsystem: "S3",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "generate_fix",
       confidence: 0.90,
-      action: "fix_s3_public_access",
-      reasoning: "Fix it",
-      requires_approval: false,
       evidence: ["CloudTrail"]
     }));
 
@@ -57,11 +59,13 @@ describe("Recovera Agentic AI - Integration Tests", () => {
   // 2. Low confidence
   it("Scenario 2: Low confidence results in alert_only", async () => {
     mockCallLLM.mockResolvedValueOnce(JSON.stringify({
-      root_cause: "Maybe public bucket",
+      rootCauseSummary: "Maybe public bucket",
+      failureMechanism: "Not sure",
+      likelySubsystem: "S3",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "generate_fix",
       confidence: 0.50, // low confidence
-      action: "fix_s3_public_access",
-      reasoning: "Not sure",
-      requires_approval: false,
       evidence: []
     }));
 
@@ -81,17 +85,19 @@ describe("Recovera Agentic AI - Integration Tests", () => {
     
     expect(report.action_taken).toBe("alert_only");
     expect(report.decision_path).toBe("alert_only");
-    expect(report.raw_output.reasoning).toContain("failed to produce a valid structured response");
+    expect(report.raw_output.failureMechanism).toContain("failed to produce a valid structured response");
   });
 
   // 4. Blocked action
   it("Scenario 4: Blocked action routes to alert_only", async () => {
     mockCallLLM.mockResolvedValueOnce(JSON.stringify({
-      root_cause: "Unknown issue",
+      rootCauseSummary: "Unknown issue",
+      failureMechanism: "Doing something weird",
+      likelySubsystem: "Unknown",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "some_unauthorized_action", // Coerced to "unknown", which is "blocked"
       confidence: 0.95,
-      action: "some_unauthorized_action", // Coerced to "unknown", which is "blocked"
-      reasoning: "Doing something weird",
-      requires_approval: false,
       evidence: []
     }));
 
@@ -99,17 +105,19 @@ describe("Recovera Agentic AI - Integration Tests", () => {
     const report = await runAgent(input);
     
     expect(report.decision_path).toBe("alert_only");
-    expect(report.raw_output.action).toBe("unknown"); // Due to coercion
+    expect(report.raw_output.recommendedAction).toBe("unknown"); // Due to coercion
   });
 
   // 5. High confidence, needs-approval action
   it("Scenario 5: High confidence but needs-approval action routes to approval_required", async () => {
     mockCallLLM.mockResolvedValueOnce(JSON.stringify({
-      root_cause: "Overpermissive IAM",
+      rootCauseSummary: "Overpermissive IAM",
+      failureMechanism: "Needs restriction",
+      likelySubsystem: "IAM",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "rollback", // needs_approval class
       confidence: 0.90,
-      action: "restrict_iam_policy", // needs_approval class
-      reasoning: "Needs restriction",
-      requires_approval: true,
       evidence: []
     }));
 
@@ -122,11 +130,13 @@ describe("Recovera Agentic AI - Integration Tests", () => {
   // 6. Verification failure
   it("Scenario 6: Verification failure triggers human review", async () => {
     mockCallLLM.mockResolvedValueOnce(JSON.stringify({
-      root_cause: "Public bucket",
+      rootCauseSummary: "Public bucket",
+      failureMechanism: "Fix it",
+      likelySubsystem: "S3",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "generate_fix",
       confidence: 0.90,
-      action: "fix_s3_public_access",
-      reasoning: "Fix it",
-      requires_approval: false,
       evidence: []
     }));
 
@@ -152,7 +162,7 @@ describe("Recovera Agentic AI - Integration Tests", () => {
     
     expect(report.decision_path).toBe("alert_only");
     // Handled by top level catch
-    expect(report.raw_output.reasoning).toContain("Agent execution failed");
+    expect(report.raw_output.failureMechanism).toContain("Agent execution failed");
   });
 
   // 8. UNKNOWN event
@@ -182,11 +192,13 @@ describe("Recovera Agentic AI - Integration Tests", () => {
   // 10. Confidence boundary 0.85
   it("Scenario 10: Confidence boundary 0.85 triggers auto_fix", async () => {
     mockCallLLM.mockResolvedValueOnce(JSON.stringify({
-      root_cause: "Public bucket",
+      rootCauseSummary: "Public bucket",
+      failureMechanism: "Fix it",
+      likelySubsystem: "S3",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "generate_fix",
       confidence: 0.85,
-      action: "fix_s3_public_access",
-      reasoning: "Fix it",
-      requires_approval: false,
       evidence: []
     }));
 
@@ -212,7 +224,7 @@ describe("Recovera Agentic AI - Integration Tests", () => {
     // Testing real logic
     process.env.AGENT_MOCK = "false";
     mockCallLLM.mockResolvedValueOnce(JSON.stringify({
-      root_cause: "Test", confidence: 0.9, action: "fix_s3_public_access", reasoning: "R", requires_approval: false, evidence: []
+      rootCauseSummary: "Test", failureMechanism: "R", likelySubsystem: "S3", likelyFiles: [], fixStrategy: [], recommendedAction: "generate_fix", confidence: 0.9, evidence: []
     }));
     mockCallLLM.mockResolvedValueOnce("Summary sentence 1. Summary sentence 2."); // Summary call
 

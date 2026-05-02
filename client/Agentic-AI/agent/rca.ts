@@ -9,11 +9,13 @@ export async function runRCA(input: AgentInput): Promise<AgentOutput | ParseErro
   // Special-case 1: UNKNOWN event
   if (input.event === "UNKNOWN") {
     return {
-      root_cause: "Event type unknown. Manual review required.",
+      rootCauseSummary: "Event type unknown. Manual review required.",
+      failureMechanism: "Unknown",
+      likelySubsystem: "Unknown",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "alert_only",
       confidence: 0.30,
-      action: "alert_only",
-      reasoning: "The event type is unrecognized and no resource state or logs are available to diagnose the issue.",
-      requires_approval: true,
       evidence: []
     };
   }
@@ -45,7 +47,7 @@ export async function runRCA(input: AgentInput): Promise<AgentOutput | ParseErro
 
   // Special-case 3: Append reasoning if logs are empty
   if (isLogsEmpty) {
-    output.reasoning = `${output.reasoning.trim()} No log data provided. Diagnosis based on resource state only.`;
+    output.failureMechanism = `${output.failureMechanism.trim()} No log data provided. Diagnosis based on resource state only.`;
   }
 
   return output;

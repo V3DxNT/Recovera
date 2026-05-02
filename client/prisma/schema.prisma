@@ -56,21 +56,21 @@ model Session {
 }
 
 model CloudCredential {
-  id               String        @id @default(cuid())
-  userId           String
-  provider         String
-  label            String?
-  accessKeyId      String        @db.Text
-  secretAccessKey  String        @db.Text
-  region           String
-  roleArn          String?       @db.Text
-  sessionToken     String?       @db.Text
-  isActive         Boolean       @default(true)
-  lastVerifiedAT   DateTime?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
-  user             User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  integrations     Integration[]
+  id              String        @id @default(cuid())
+  userId          String
+  provider        String
+  label           String?
+  accessKeyId     String        @db.Text
+  secretAccessKey String        @db.Text
+  region          String
+  roleArn         String?       @db.Text
+  sessionToken    String?       @db.Text
+  isActive        Boolean       @default(true)
+  lastVerifiedAT  DateTime?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  integrations    Integration[]
 
   @@unique([userId, provider, label])
 }
@@ -95,19 +95,19 @@ model Integration {
 }
 
 model InstanceMapping {
-  id              String      @id @default(cuid())
-  integrationId   String
-  repositoryId    String?
-  repoFullName    String      // "user/payment-api"
-  logGroupName    String      // "/aws/eks/cluster/containers"
-  resourceId      String?     // instance ID, service ARN, or ECR image name
-  resourceType    String      // "ec2" | "ecs" | "eks" | "lambda" | "log_group"
-  resourceLabel   String?     // friendly name from tags
-  confidence      Float       @default(0) // 0.0 to 1.0
-  source          String      @default("auto") // "auto" | "manual"
-  status          String      @default("pending") // "pending" | "confirmed" | "ignored"
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  id            String   @id @default(cuid())
+  integrationId String
+  repositoryId  String?
+  repoFullName  String // "user/payment-api"
+  logGroupName  String // "/aws/eks/cluster/containers"
+  resourceId    String? // instance ID, service ARN, or ECR image name
+  resourceType  String // "ec2" | "ecs" | "eks" | "lambda" | "log_group"
+  resourceLabel String? // friendly name from tags
+  confidence    Float    @default(0) // 0.0 to 1.0
+  source        String   @default("auto") // "auto" | "manual"
+  status        String   @default("pending") // "pending" | "confirmed" | "ignored"
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   integration Integration @relation(fields: [integrationId], references: [id], onDelete: Cascade)
   repository  Repository? @relation(fields: [repositoryId], references: [id], onDelete: SetNull)
@@ -118,7 +118,7 @@ model InstanceMapping {
 model Repository {
   id            String   @id @default(cuid())
   userId        String
-  fullName      String   // "user/repo"
+  fullName      String // "user/repo"
   name          String
   description   String?
   stars         Int      @default(0)
@@ -129,54 +129,67 @@ model Repository {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
-  user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
-  mappings      InstanceMapping[]
-  incidents     Incident[]
+  user      User              @relation(fields: [userId], references: [id], onDelete: Cascade)
+  mappings  InstanceMapping[]
+  incidents Incident[]
 
   @@unique([userId, fullName])
 }
 
 model Incident {
-  id            String          @id @default(cuid())
-  repositoryId  String
-  fingerprint   String
-  title         String
-  severity      String          // "low" | "medium" | "high" | "critical"
-  status        String          // "open" | "investigating" | "mitigated" | "resolved" | "ignored"
-  firstSeenAt   DateTime        @default(now())
-  lastSeenAt    DateTime        @default(now())
-  eventCount    Int             @default(1)
-  confidence    Float           @default(1.0)
-  createdAt     DateTime        @default(now())
-  updatedAt     DateTime        @updatedAt
+  id           String   @id @default(cuid())
+  repositoryId String
+  fingerprint  String
+  title        String
+  severity     String // "low" | "medium" | "high" | "critical"
+  status       String // "open" | "investigating" | "mitigated" | "resolved" | "ignored"
+  firstSeenAt  DateTime @default(now())
+  lastSeenAt   DateTime @default(now())
+  eventCount   Int      @default(1)
+  confidence   Float    @default(1.0)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
 
   repository    Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   events        IncidentEvent[]
   patches       PatchArtifact[]
   actions       IncidentAction[]
+  rcaVersions   IncidentRca[]
 
   @@unique([repositoryId, fingerprint])
   @@index([status, severity])
 }
 
-model IncidentEvent {
+model IncidentRca {
   id              String   @id @default(cuid())
   incidentId      String
-  eventId         String   @unique
-  rawExcerpt      String   @db.Text
-  stackTop        String?  @db.Text
-  detectedAt      DateTime @default(now())
-  processingStatus String   @default("pending") // "pending" | "processed" | "failed"
+  rcaPayload      String   @db.Text
+  version         Int      @default(1)
+  createdAt       DateTime @default(now())
 
   incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
-  
+
+  @@index([incidentId, version])
+}
+
+model IncidentEvent {
+  id               String   @id @default(cuid())
+  incidentId       String
+  eventId          String   @unique
+  rawExcerpt       String   @db.Text
+  stackTop         String?  @db.Text
+  detectedAt       DateTime @default(now())
+  processingStatus String   @default("pending") // "pending" | "processed" | "failed"
+
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+
   @@index([incidentId, detectedAt])
 }
 
 model DetectionAudit {
   id            String   @id @default(cuid())
   eventId       String   @unique
-  engine        String   // "rule" | "llm"
+  engine        String // "rule" | "llm"
   label         String
   confidence    Float
   explanation   String?  @db.Text
@@ -197,21 +210,20 @@ model PatchArtifact {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  incident         Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 }
 
 model IncidentAction {
-  id             String   @id @default(cuid())
-  incidentId     String
-  actionType     String   // "open_pr", etc.
-  status         String   // "pending", "opened", "failed", "merged", "closed"
-  branchName     String?
-  commitSha      String?
-  prUrl          String?
-  failureReason  String?  @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id            String   @id @default(cuid())
+  incidentId    String
+  actionType    String // "open_pr", etc.
+  status        String // "pending", "opened", "failed", "merged", "closed"
+  branchName    String?
+  commitSha     String?
+  prUrl         String?
+  failureReason String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
-  incident       Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 }
-

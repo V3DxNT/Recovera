@@ -4,11 +4,17 @@ import { z } from "zod";
 import { AgentOutput, ParseError, ActionType } from "./types";
 
 const agentOutputSchema = z.object({
-  root_cause: z.string(),
+  rootCauseSummary: z.string(),
+  failureMechanism: z.string(),
+  likelySubsystem: z.string(),
+  likelyFiles: z.array(z.object({
+    path: z.string(),
+    reason: z.string(),
+    confidence: z.number(),
+  })),
+  fixStrategy: z.array(z.string()),
+  recommendedAction: z.string(),
   confidence: z.number(),
-  action: z.string(),
-  reasoning: z.string(),
-  requires_approval: z.boolean(),
   evidence: z.array(z.string()),
 });
 
@@ -69,25 +75,27 @@ export function parseAgentOutput(raw: string): AgentOutput | ParseError {
 
   // Coerce action
   const validActions = [
-    "fix_s3_public_access",
-    "restrict_iam_policy",
-    "close_security_group_port",
+    "generate_fix",
+    "rollback",
+    "human_only",
     "alert_only",
     "unknown"
   ];
   
-  let finalAction = data.action as ActionType;
-  if (!validActions.includes(data.action)) {
-    console.warn(`Unknown action received from LLM: ${data.action}. Coercing to 'unknown'.`);
+  let finalAction = data.recommendedAction as ActionType;
+  if (!validActions.includes(data.recommendedAction)) {
+    console.warn(`Unknown action received from LLM: ${data.recommendedAction}. Coercing to 'unknown'.`);
     finalAction = "unknown";
   }
 
   return {
-    root_cause: data.root_cause,
+    rootCauseSummary: data.rootCauseSummary,
+    failureMechanism: data.failureMechanism,
+    likelySubsystem: data.likelySubsystem,
+    likelyFiles: data.likelyFiles,
+    fixStrategy: data.fixStrategy,
+    recommendedAction: finalAction,
     confidence: data.confidence,
-    action: finalAction,
-    reasoning: data.reasoning,
-    requires_approval: data.requires_approval,
     evidence: data.evidence,
   };
 }
