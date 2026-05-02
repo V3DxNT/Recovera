@@ -45,7 +45,7 @@ export async function buildReport(
       const summaryInput = `Incident: ${input.event} on ${input.metadata.resource}. Reasoning: ${output.failureMechanism}`;
       const generated = await callLLM(
         { ...input, logs: "", resource_state: { type: "summary", config: {} } }, 
-        summaryPrompt + "\\n\\n" + summaryInput
+        summaryPrompt + "\n\n" + summaryInput
       );
       
       // Attempt to extract text if it returned a JSON object by accident, or just use as-is if plain text.

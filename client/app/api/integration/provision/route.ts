@@ -16,6 +16,17 @@ interface MappingInput {
   resourceLabel?: string; // friendly name
 }
 
+function normalizeLogGroupName(value: string | null | undefined): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim();
+  if (!normalized) return null;
+
+  const sentinelValues = new Set(["unknown", "n/a", "na", "none", "null", "undefined"]);
+  if (sentinelValues.has(normalized.toLowerCase())) return null;
+
+  return normalized;
+}
+
 /**
  * Provisioning step tracking — records which resources were created,
  * their names/ARNs, and whether each step succeeded or failed.
@@ -26,6 +37,7 @@ interface ProvisioningStep {
   status: "pending" | "success" | "failed" | "skipped";
   resourceName?: string;   // The actual name/ARN of the created resource
   error?: string;          // Error message if failed
+  suggestion?: string;     // How to fix it
 }
 
 /**
@@ -53,12 +65,19 @@ export async function POST(req: Request) {
     { step: "db", label: "Save Integration & Mappings", status: "pending" },
   ];
 
-  const markStep = (stepId: string, status: ProvisioningStep["status"], resourceName?: string, error?: string) => {
+  const markStep = (
+    stepId: string, 
+    status: ProvisioningStep["status"], 
+    resourceName?: string, 
+    error?: string,
+    suggestion?: string
+  ) => {
     const s = steps.find(s => s.step === stepId);
     if (s) {
       s.status = status;
       if (resourceName) s.resourceName = resourceName;
       if (error) s.error = error;
+      if (suggestion) s.suggestion = suggestion;
     }
   };
 
@@ -114,7 +133,13 @@ export async function POST(req: Request) {
       identity = await validateCredentials(credential);
       markStep("validate", "success", identity.accountId);
     } catch (err: any) {
-      markStep("validate", "failed", undefined, err.message);
+      markStep(
+        "validate", 
+        "failed", 
+        undefined, 
+        err.message, 
+        "Check Access Key ID and Secret Access Key. Ensure the user has 'sts:GetCallerIdentity' permissions."
+      );
       throw err;
     }
 
@@ -124,7 +149,13 @@ export async function POST(req: Request) {
       createdResources.push("s3");
       markStep("s3", "success", bucketName);
     } catch (err: any) {
-      markStep("s3", "failed", undefined, err.message);
+      markStep(
+        "s3", 
+        "failed", 
+        undefined, 
+        err.message, 
+        "Check S3 permissions (s3:CreateBucket) or verify if the bucket name is globally unique."
+      );
       throw err;
     }
 
@@ -140,7 +171,13 @@ export async function POST(req: Request) {
       createdResources.push("iam");
       markStep("iam", "success", `FirehoseRole, CloudWatchRole (${region})`);
     } catch (err: any) {
-      markStep("iam", "failed", undefined, err.message);
+      markStep(
+        "iam", 
+        "failed", 
+        undefined, 
+        err.message, 
+        "Ensure permissions for 'iam:CreateRole', 'iam:PutRolePolicy', and 'iam:GetRole'."
+      );
       throw err;
     }
 
@@ -153,21 +190,71 @@ export async function POST(req: Request) {
       createdResources.push("firehose");
       markStep("firehose", "success", `AutoSRE-LogStream-${user.id}-${region}`);
     } catch (err: any) {
-      markStep("firehose", "failed", `AutoSRE-LogStream-${user.id}-${region}`, err.message);
+      markStep(
+        "firehose", 
+        "failed", 
+        `AutoSRE-LogStream-${user.id}-${region}`, 
+        err.message,
+        "Check permissions for 'firehose:CreateDeliveryStream'. This can also fail if the IAM roles from the previous step haven't propagated yet."
+      );
       throw err;
     }
 
     // 5. Subscribe ONLY the selected log groups
-    uniqueLogGroups = [...new Set(mappings.map(m => m.logGroupName))];
-    try {
-      const subscribedGroups = await subscribeLogGroups(
-        credential, firehoseArn, cwRoleArn, uniqueLogGroups
-      );
+    uniqueLogGroups = [
+      ...new Set(
+        mappings
+          .map((m) => normalizeLogGroupName(m.logGroupName))
+          .filter((g): g is string => Boolean(g))
+      ),
+    ];
+    
+    if (uniqueLogGroups.length === 0) {
+      console.log("[AWS] No valid log groups to subscribe.");
       createdResources.push("cloudwatch");
-      markStep("cloudwatch", "success", uniqueLogGroups.join(", "));
+      markStep("cloudwatch", "success", "No log groups selected/available");
+    } else {
+      try {
+        const { subscribed, failed } = await subscribeLogGroups(
+          credential, firehoseArn, cwRoleArn, uniqueLogGroups
+        );
+      
+      if (failed.length > 0) {
+        const missingLogGroups = failed.filter(
+          (f) => f.code === "ResourceNotFoundException" || /does not exist/i.test(f.error)
+        );
+        const blockingFailures = failed.filter((f) => !missingLogGroups.includes(f));
+
+        if (blockingFailures.length > 0) {
+          const hasLimitError = blockingFailures.some(f => f.code === "LimitExceededException");
+          const errorMessage = `${subscribed.length} subscribed, ${blockingFailures.length} failed. First error: ${blockingFailures[0].error}`;
+          const suggestion = hasLimitError 
+            ? "One or more log groups have 2 subscription filters. Remove one in the AWS Console and try again."
+            : "Check IAM permissions for 'logs:PutSubscriptionFilter'.";
+            
+          markStep("cloudwatch", "failed", uniqueLogGroups.join(", "), errorMessage, suggestion);
+          throw new Error(errorMessage);
+        }
+
+        const skippedNames = missingLogGroups.map((f) => f.name).join(", ");
+        createdResources.push("cloudwatch");
+        markStep(
+          "cloudwatch",
+          "skipped",
+          subscribed.join(", ") || skippedNames || uniqueLogGroups.join(", "),
+          `${missingLogGroups.length} selected log group(s) were not found and were skipped.`,
+          "Verify that selected resources are writing to CloudWatch Logs in this region, then retry provisioning."
+        );
+      } else {
+        createdResources.push("cloudwatch");
+        markStep("cloudwatch", "success", uniqueLogGroups.join(", "));
+      }
     } catch (err: any) {
-      markStep("cloudwatch", "failed", uniqueLogGroups.join(", "), err.message);
+      if (steps.find(s => s.step === "cloudwatch")?.status !== "failed") {
+        markStep("cloudwatch", "failed", uniqueLogGroups.join(", "), err.message);
+      }
       throw err;
+    }
     }
 
     // 6. Save Integration record + Mappings

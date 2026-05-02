@@ -157,9 +157,19 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
     }
   };
 
-  // TODO: Replace with real credentialId from user's stored integration
-  const credentialId = null; // Will be fetched from DB when AWS is connected
+  // Fetch credentialId from user's stored integration
+  const [credentialId, setCredentialId] = useState<string | null>(null);
 
+  useEffect(() => {
+    fetch("/api/user/credentials")
+      .then(r => r.json())
+      .then(data => {
+        if (data.credentials?.[0]) {
+          setCredentialId(data.credentials[0].id);
+        }
+      })
+      .catch(err => console.error("Failed to fetch credential:", err));
+  }, []);
   // Mock data for the timeline and issues
   const metrics = {
     uptime: "99.98%",

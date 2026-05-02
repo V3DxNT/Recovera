@@ -96,6 +96,7 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
   const [showPolicy, setShowPolicy] = useState(false);
   const [copied, setCopied] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+  const [suggestion, setSuggestion] = useState<string | null>(null);
   const [credentialId, setCredentialId] = useState<string | null>(null);
 
   const [suggestedMappings, setSuggestedMappings] = useState<SuggestedMapping[]>([]);
@@ -222,6 +223,7 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
 
     setStep("validating");
     try {
+      // Build the mappings payload once — reused for both DB persist and provision
       const mappingsToSave = suggestedMappings.map(m => ({
         resourceId: m.resource.id,
         resourceType: m.resource.type,
@@ -232,7 +234,8 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
         source: selectedMappings[m.resource.id] === m.bestMatch ? "auto" : "manual",
       })).filter(m => m.repoFullName); // Only save those with a repo assigned
 
-      const res = await fetch("/api/integration/mappings", {
+      // Step 1: Persist mapping records to the DB
+      const mappingsRes = await fetch("/api/integration/mappings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -241,9 +244,36 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
         }),
       });
 
-      if (!res.ok) {
-        const data = await res.json();
+      if (!mappingsRes.ok) {
+        const data = await mappingsRes.json();
         setErrorMessage(data.error || "Failed to save mappings.");
+        setStep("error");
+        return;
+      }
+
+      // Step 2: Provision AWS infrastructure (S3, IAM, Firehose, CloudWatch)
+      // This is the critical step — without it, no logs will ever arrive.
+      const provisionRes = await fetch("/api/integration/provision", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          credentialId,
+          mappings: mappingsToSave.map(m => ({
+            repoFullName: m.repoFullName,
+            logGroupName: m.logGroupName,
+            resourceId: m.resourceId,
+            resourceType: m.resourceType,
+            resourceLabel: m.resourceLabel,
+          })),
+        }),
+      });
+
+      if (!provisionRes.ok) {
+        const data = await provisionRes.json();
+        // Show the specific failed step if available
+        const failedLabel = data.failedStepLabel || "AWS Provisioning";
+        setErrorMessage(`Mappings saved, but ${failedLabel} failed: ${data.stepError || data.error}`);
+        setSuggestion(data.provisioningSteps?.find((s: any) => s.status === "failed")?.suggestion || null);
         setStep("error");
         return;
       }
@@ -255,12 +285,14 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
     }
   };
 
+
   const handleClose = () => {
     setStep("credentials");
     setForm({ label: "", accessKeyId: "", secretAccessKey: "", region: "us-east-1" });
     setShowSecret(false);
     setShowPolicy(false);
     setErrorMessage("");
+    setSuggestion(null);
     setExistingCredsList([]);
     setShowNewForm(true);
     onClose();
@@ -653,8 +685,19 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
                                                   Best Match
                                                 </div>
                                               )}
+                                              {m.resource.logGroups.length === 0 && (
+                                                <div className="text-[9px] text-amber-500 font-bold bg-amber-500/10 px-1.5 py-0.5 rounded uppercase tracking-tight border border-amber-500/20">
+                                                  No Log Group
+                                                </div>
+                                              )}
                                             </div>
                                             <p className="text-[11px] text-zinc-500 font-mono mt-0.5 truncate max-w-[200px]">{m.resource.id}</p>
+                                            {m.resource.logGroups.length === 0 && (
+                                              <div className="flex items-center gap-1.5 mt-1 text-[10px] text-amber-500/80 italic">
+                                                <AlertTriangle className="w-3 h-3" />
+                                                CloudWatch logs not found for this resource.
+                                              </div>
+                                            )}
                                           </div>
                                         </div>
                                         <div className="text-right">
@@ -757,11 +800,27 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
                       <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
                         <AlertTriangle className="w-7 h-7 text-red-400" />
                       </div>
-                      <div className="text-center">
-                        <p className="text-sm font-medium text-white">Connection Failed</p>
-                        <p className="text-xs text-red-400/70 mt-1 max-w-xs leading-relaxed">
-                          {errorMessage}
-                        </p>
+                      <div className="text-center space-y-3">
+                        <div>
+                          <p className="text-sm font-medium text-white">Connection Failed</p>
+                          <p className="text-xs text-red-400/70 mt-1 max-w-xs leading-relaxed mx-auto">
+                            {errorMessage}
+                          </p>
+                        </div>
+                        
+                        {suggestion && (
+                          <div className="bg-white/[0.03] border border-white/5 rounded-xl p-4 text-left max-w-xs mx-auto">
+                            <div className="flex items-start gap-2.5">
+                              <Info className="w-3.5 h-3.5 text-blue-400 mt-0.5 flex-shrink-0" />
+                              <div>
+                                <p className="text-[11px] font-bold text-zinc-300 uppercase tracking-wider">Suggested Fix</p>
+                                <p className="text-xs text-zinc-400 mt-1.5 leading-relaxed">
+                                  {suggestion}
+                                </p>
+                              </div>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </motion.div>
                   )}

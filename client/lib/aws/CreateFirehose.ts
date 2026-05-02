@@ -20,6 +20,7 @@ export async function createDeliveryStream(
         credentials: {
             accessKeyId: decrypt(credential.accessKeyId),
             secretAccessKey: decrypt(credential.secretAccessKey),
+            ...(credential.sessionToken && { sessionToken: decrypt(credential.sessionToken) })
         },
     });
 
