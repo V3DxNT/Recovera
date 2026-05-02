@@ -8,7 +8,7 @@ import { runSandboxValidation } from "@/lib/sandbox/runner";
 
 export async function POST(
   req: NextRequest,
-  { params }: { params: Promise<{ id: string }> } // In Next.js 15+ App Router, params is a Promise
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await getServerSession(authOptions);
@@ -16,7 +16,7 @@ export async function POST(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const { id: incidentId } = await params;
+    const { id } = await params;
     
     // In a fully integrated flow, RCA and CodeContext would be fetched from the DB
     // using the incidentId. Since Step 3 & 4 are not fully implemented, we accept
@@ -30,7 +30,7 @@ export async function POST(
 
     // 1. Fetch Incident and Repository metadata from the DB
     const incident = await prisma.incident.findUnique({
-      where: { id: incidentId },
+      where: { id: id },
       include: { repository: true }
     });
 
@@ -47,7 +47,7 @@ export async function POST(
     };
 
     // 2. Generate the fix using the AI module
-    console.log(`[Fix Generator] Generating patch for Incident ${incidentId}...`);
+    console.log(`[Fix Generator] Generating patch for Incident ${id}...`);
     const fixOutput = await generateFix(mockIncidentInfo, rca, context);
 
     // 3. Validate the patch using static policies (Blast radius, blocked paths)

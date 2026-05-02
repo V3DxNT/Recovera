@@ -152,6 +152,8 @@ model Incident {
 
   repository    Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   events        IncidentEvent[]
+  patches       PatchArtifact[]
+  actions       IncidentAction[]
 
   @@unique([repositoryId, fingerprint])
   @@index([status, severity])
@@ -183,3 +185,33 @@ model DetectionAudit {
 
   @@index([eventId])
 }
+
+model PatchArtifact {
+  id               String   @id @default(cuid())
+  incidentId       String
+  patchDiff        String   @db.Text
+  changeSummary    String   @db.Text
+  riskScore        Float
+  validationStatus String   @default("pending") // pending, passed, failed
+  validationLogs   String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  incident         Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model IncidentAction {
+  id             String   @id @default(cuid())
+  incidentId     String
+  actionType     String   // "open_pr", etc.
+  status         String   // "pending", "opened", "failed", "merged", "closed"
+  branchName     String?
+  commitSha      String?
+  prUrl          String?
+  failureReason  String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  incident       Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
