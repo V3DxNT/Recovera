@@ -1,0 +1,21 @@
+{
+  "event": "S3_PUBLIC",
+  "logs": "CloudTrail PutBucketPolicy by unknown user",
+  "resource_state": {
+    "type": "s3",
+    "config": {
+      "PublicAccessBlockConfiguration": {
+        "BlockPublicAcls": false,
+        "BlockPublicPolicy": false
+      }
+    }
+  },
+  "metadata": {
+    "resource": "my-public-bucket",
+    "account_id": "123456789012",
+    "region": "us-east-1"
+  },
+  "incident_id": "test-incident-s3",
+  "incident_status": "pending"
+}
+
