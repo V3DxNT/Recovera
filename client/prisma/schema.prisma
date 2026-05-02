@@ -151,6 +151,7 @@ model Incident {
 
   repository    Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   patches       PatchArtifact[]
+  actions       IncidentAction[]
 }
 
 model PatchArtifact {
@@ -166,3 +167,19 @@ model PatchArtifact {
 
   incident         Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 }
+
+model IncidentAction {
+  id             String   @id @default(cuid())
+  incidentId     String
+  actionType     String   // "open_pr", etc.
+  status         String   // "pending", "opened", "failed", "merged", "closed"
+  branchName     String?
+  commitSha      String?
+  prUrl          String?
+  failureReason  String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  incident       Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
