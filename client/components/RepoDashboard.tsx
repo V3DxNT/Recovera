@@ -646,7 +646,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                         )}
 
                         {latestAction && latestAction.prUrl && (
-                          <a href={latestAction.prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
+                          <a href={latestAction.prUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
                             <ExternalLink className="w-4 h-4" />
                             View PR
                           </a>
