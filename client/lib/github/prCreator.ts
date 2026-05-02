@@ -31,9 +31,17 @@ export interface PrCreatorResult {
 export async function createPullRequest(options: PrCreatorOptions): Promise<PrCreatorResult> {
   const { repoFullName, incidentId, patchDiff, githubToken, prTitle, prBody, baseBranch = "main" } = options;
   const branchName = `auto-fix/inc-${incidentId}-${Date.now()}`;
-  
+  const repoParts = repoFullName.trim().split('/');
+
+  if (repoParts.length !== 2 || !repoParts[0] || !repoParts[1]) {
+    return {
+      success: false,
+      error: `Invalid repoFullName "${repoFullName}". Expected format "owner/repo".`,
+    };
+  }
+
+  const [owner, repo] = repoParts;
   const octokit = new Octokit({ auth: githubToken });
-  const [owner, repo] = repoFullName.split('/');
 
   const workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'recovera-pr-'));
   const patchPath = path.join(workDir, 'fix.patch');
