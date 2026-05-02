@@ -125,7 +125,7 @@ export default function IntegrateModal({ isOpen, onClose }: IntegrateModalProps)
         const mappingsRes = await fetch("/api/integration/mappings");
         const mappingsData = await mappingsRes.json();
         if (mappingsData.success && mappingsData.projects) {
-          const ids = new Set(mappingsData.projects.map((p: any) => p.resourceId));
+          const ids = new Set<string>(mappingsData.projects.map((p: any) => p.resourceId as string));
           setExistingMappingIds(ids);
         }
       } catch (err) {

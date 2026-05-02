@@ -135,6 +135,7 @@ model Repository {
   mappings      InstanceMapping[]
   codeChunks    CodeChunk[]
   indexJobs     IndexJob[]
+  incidents     Incident[]
 
   @@unique([userId, fullName])
 }
@@ -166,3 +167,82 @@ model IndexJob {
 
   repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
 }
+model Incident {
+  id            String          @id @default(cuid())
+  repositoryId  String
+  fingerprint   String
+  title         String
+  severity      String          // "low" | "medium" | "high" | "critical"
+  status        String          // "open" | "investigating" | "mitigated" | "resolved" | "ignored"
+  firstSeenAt   DateTime        @default(now())
+  lastSeenAt    DateTime        @default(now())
+  eventCount    Int             @default(1)
+  confidence    Float           @default(1.0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  repository    Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  events        IncidentEvent[]
+  patches       PatchArtifact[]
+  actions       IncidentAction[]
+
+  @@unique([repositoryId, fingerprint])
+  @@index([status, severity])
+}
+
+model IncidentEvent {
+  id              String   @id @default(cuid())
+  incidentId      String
+  eventId         String   @unique
+  rawExcerpt      String   @db.Text
+  stackTop        String?  @db.Text
+  detectedAt      DateTime @default(now())
+  processingStatus String   @default("pending") // "pending" | "processed" | "failed"
+
+  incident        Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  
+  @@index([incidentId, detectedAt])
+}
+
+model DetectionAudit {
+  id            String   @id @default(cuid())
+  eventId       String   @unique
+  engine        String   // "rule" | "llm"
+  label         String
+  confidence    Float
+  explanation   String?  @db.Text
+  reportPayload String?  @db.Text // Store JSON stringified DiagnosticReport
+  createdAt     DateTime @default(now())
+
+  @@index([eventId])
+}
+
+model PatchArtifact {
+  id               String   @id @default(cuid())
+  incidentId       String
+  patchDiff        String   @db.Text
+  changeSummary    String   @db.Text
+  riskScore        Float
+  validationStatus String   @default("pending") // pending, passed, failed
+  validationLogs   String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  incident         Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model IncidentAction {
+  id             String   @id @default(cuid())
+  incidentId     String
+  actionType     String   // "open_pr", etc.
+  status         String   // "pending", "opened", "failed", "merged", "closed"
+  branchName     String?
+  commitSha      String?
+  prUrl          String?
+  failureReason  String?  @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  incident       Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
