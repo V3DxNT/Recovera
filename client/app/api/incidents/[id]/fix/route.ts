@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import { generateFix, MockRCA, MockCodeContext } from "@/lib/ai/fixGenerator";
 import { validatePatch } from "@/lib/ai/patchValidator";
 import { runSandboxValidation } from "@/lib/sandbox/runner";
+import { evaluatePolicy } from "@/lib/safety/policyEngine";
 
 export async function POST(
   req: NextRequest,
@@ -68,7 +69,30 @@ export async function POST(
       return NextResponse.json({ error: `Policy Validation Failed: ${policyValidation.reason}`, patch: fixOutput }, { status: 422 });
     }
 
-    // 4. Run Sandbox Validation (Lint/Build check)
+    // 4. Safety Policy Evaluation
+    console.log(`[Fix Generator] Evaluating safety policy...`);
+    const policyDecision = await evaluatePolicy({
+      incidentId: incident.id,
+      actionType: "fix_generation",
+      confidenceScore: incident.confidence,
+      patchDiff: fixOutput.patchDiff,
+    });
+
+    if (policyDecision.decision === "BLOCK_AND_ALERT") {
+      await prisma.patchArtifact.create({
+        data: {
+          incidentId: incident.id,
+          patchDiff: fixOutput.patchDiff,
+          changeSummary: fixOutput.changeSummary,
+          riskScore: policyDecision.riskScore,
+          validationStatus: "failed",
+          validationLogs: `Safety Policy Blocked: ${policyDecision.reasonCodes.join(", ")}`,
+        }
+      });
+      return NextResponse.json({ error: `Action Blocked by Safety Layer: ${policyDecision.reasonCodes.join(", ")}` }, { status: 403 });
+    }
+
+    // 5. Run Sandbox Validation (Lint/Build check)
     // We pass the user's github access token from session if available, else undefined
     // Note: session.accessToken relies on custom NextAuth callbacks injecting it
     const githubToken = (session as { accessToken?: string }).accessToken;
@@ -86,7 +110,7 @@ export async function POST(
         incidentId: incident.id,
         patchDiff: fixOutput.patchDiff,
         changeSummary: fixOutput.changeSummary,
-        riskScore: fixOutput.riskScore,
+        riskScore: policyDecision.riskScore,
         validationStatus: sandboxResult.passed ? "passed" : "failed",
         validationLogs: sandboxResult.logs,
       }

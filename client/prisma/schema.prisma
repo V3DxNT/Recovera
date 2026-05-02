@@ -214,16 +214,30 @@ model PatchArtifact {
 }
 
 model IncidentAction {
-  id            String   @id @default(cuid())
-  incidentId    String
-  actionType    String // "open_pr", etc.
-  status        String // "pending", "opened", "failed", "merged", "closed"
-  branchName    String?
-  commitSha     String?
-  prUrl         String?
-  failureReason String?  @db.Text
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               String   @id @default(cuid())
+  incidentId       String
+  actionType       String   // "open_pr", etc.
+  status           String   // "pending", "opened", "failed", "merged", "closed"
+  requiresApproval Boolean  @default(false)
+  branchName       String?
+  commitSha        String?
+  prUrl            String?
+  failureReason    String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  incident Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+  incident         Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
+
+model SafetyAuditLog {
+  id              String   @id @default(cuid())
+  incidentId      String
+  actionType      String   // "fix_generation", "pr_creation"
+  decision        String   // "ALLOW_AUTO_PR", "REQUIRE_HUMAN_APPROVAL", "BLOCK_AND_ALERT"
+  reasonCodes     String   // Comma-separated list of reasons (e.g. "HIGH_RISK_DOMAIN, LOW_CONFIDENCE")
+  riskScore       Float
+  details         String?  @db.Text
+  createdAt       DateTime @default(now())
+
+  @@index([incidentId, createdAt])
 }

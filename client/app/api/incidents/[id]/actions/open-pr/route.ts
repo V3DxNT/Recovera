@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { prisma } from "@/lib/prisma";
 import { createPullRequest } from "@/lib/github/prCreator";
+import { evaluatePolicy } from "@/lib/safety/policyEngine";
 
 export async function POST(
   req: NextRequest,
@@ -41,16 +42,39 @@ export async function POST(
       return NextResponse.json({ error: "Cannot create a PR for a patch that has not passed validation" }, { status: 400 });
     }
 
-    // Initialize IncidentAction
+    // 2. Evaluate Policy for PR Creation
+    const policyDecision = await evaluatePolicy({
+      incidentId: incident.id,
+      actionType: "pr_creation",
+      confidenceScore: incident.confidence, // using incident confidence
+      patchDiff: patch.patchDiff,
+    });
+
+    if (policyDecision.decision === "BLOCK_AND_ALERT") {
+      return NextResponse.json({ error: `PR creation blocked by safety policy: ${policyDecision.reasonCodes.join(", ")}` }, { status: 403 });
+    }
+
+    const requiresApproval = policyDecision.decision === "REQUIRE_HUMAN_APPROVAL";
+
+    // 3. Initialize IncidentAction
     const action = await prisma.incidentAction.create({
       data: {
         incidentId: incident.id,
         actionType: "open_pr",
-        status: "pending",
+        status: requiresApproval ? "pending_approval" : "pending",
+        requiresApproval,
       }
     });
 
-    // 2. Fetch the authenticated user's linked GitHub token.
+    if (requiresApproval) {
+      return NextResponse.json({ 
+        message: "Human approval required before opening PR.", 
+        actionId: action.id,
+        reason: policyDecision.reasonCodes.join(", ") 
+      }, { status: 202 });
+    }
+
+    // 4. Fetch the authenticated user's linked GitHub token.
     // Do not fall back to a shared server token for this endpoint, to avoid
     // performing PR creation with the wrong account or elevated privileges.
     const userAccount = await prisma.account.findFirst({
@@ -69,7 +93,7 @@ export async function POST(
       );
     }
 
-    // 3. Format PR Body
+    // 5. Format PR Body
     const prBody = `
 ## AutoSRE Remediation: ${incident.title}
 
@@ -92,7 +116,7 @@ ${patch.changeSummary}
 > 🤖 **Note:** Please review the changes carefully before merging. If you need to reject this fix, simply close this PR and Recovera will track the rejection.
 `;
 
-    // 4. Create PR
+    // 6. Create PR
     const result = await createPullRequest({
       repoFullName: incident.repository.fullName,
       incidentId: incident.id,
@@ -103,7 +127,7 @@ ${patch.changeSummary}
       baseBranch: incident.repository.defaultBranch,
     });
 
-    // 5. Update IncidentAction
+    // 7. Update IncidentAction
     if (result.success) {
       await prisma.incidentAction.update({
         where: { id: action.id },
