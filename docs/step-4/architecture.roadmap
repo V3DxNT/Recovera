@@ -1,0 +1,61 @@
+# Architecture Roadmap: Codebase Mapping (Step 4)
+
+## Current State (Branch: Step-4-Mapping)
+
+```
+GitHub Push Event
+      │
+      ▼
+POST /api/webhooks/github
+      │
+      ├─── Verify HMAC-SHA256 signature
+      ├─── Lookup repository by full_name
+      └─── Fire-and-forget: processRepository(repoId, commitSha)
+                │
+                ▼
+         workers/repo-indexer.ts
+                │
+                ├─── git clone --depth 1 → temp dir
+                ├─── Recursively list valid code files
+                ├─── chunker.ts → 50-line windows, 10-line overlap
+                ├─── embeddings.ts → Gemini text-embedding-004 (batched ≤100)
+                ├─── vectorStore.ts → pgvector upsert (raw SQL)
+                └─── IndexJob updated → "completed" or "failed"
+
+Incident Analysis
+      │
+      ▼
+POST /api/retrieval/search
+      │
+      ├─── generateEmbedding(incidentContext) → Gemini query vector
+      ├─── searchChunks(repositoryId, vector, topK=20) → pgvector cosine <=>
+      └─── rerankChunks(incidentContext, candidates) → callLLM (Gemini → Groq)
+                │
+                └─── Returns top 5 chunks with relevanceScore + reasoning
+```
+
+## Phase 1: Core Vector Indexing (Completed — Step-4-Mapping branch)
+- PostgreSQL pgvector extension support via Prisma `Unsupported("vector(768)")`.
+- Gemini `text-embedding-004` REST integration with batch support (up to 100/call).
+- Sliding window chunker with 10-line overlap for context preservation.
+- pgvector Cosine distance search (`<=>`) for efficient nearest-neighbour retrieval.
+- LLM reranker: Gemini as primary, Groq as fallback — scores chunks vs. incident context.
+- GitHub `push` webhook triggering incremental full re-index.
+- `IndexJob` model for tracking status and error logging.
+
+## Phase 2: Context Injection into RCA (Next)
+- Replace the `/* Code retrieval stub */` in `lib/ai/rootCauseAnalyzer.ts:37` with a real call to `POST /api/retrieval/search`.
+- Pass retrieved chunk paths + content into the `repo_context` field of `AgentInput`.
+- Add commit-aware metadata (`path`, `startLine`, `endLine`, `commitSha`, `relevanceScore`) to the RCA evidence bundle.
+
+## Phase 3: Performance and Accuracy (Upcoming)
+- **Diff-only incremental reindex**: Instead of deleting all chunks on push, only reindex changed files from the git diff.
+- **Syntax-aware chunking**: Tree-sitter AST-based chunking for TypeScript/JS/Python to preserve function and class boundaries.
+- **Token budget enforcement**: Limit the total tokens injected into `AgentInput.repo_context` to avoid LLM context overflow.
+- **Commit SHA stale detection**: Skip reindexing if `IndexJob.commitSha` matches the incoming push SHA.
+
+## Phase 4: Quality and Observability (Future)
+- **Retrieval quality metrics**: Automated Recall@K and MRR evaluation suite on labeled golden incidents.
+- **Knowledge graph enhancement**: File dependency graph to boost chunks that are logically connected to error stack frames.
+- **Multi-tenant isolation**: Row-level security or partitioned tables for CodeChunk in multi-tenant deployments.
+- **Embedding model upgrades**: Hot-swap to newer embedding models (e.g., `text-embedding-005`) without full reindex via migration jobs.
