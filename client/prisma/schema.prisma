@@ -83,8 +83,9 @@ model Integration {
   s3BucketName String?
   firehoseArn  String?
   status       String
-  errorMessage String?
-  lastSyncAt   DateTime?
+  errorMessage        String?
+  provisioningDetails String?  @db.Text // JSON: step-by-step provisioning status with resource names
+  lastSyncAt          DateTime?
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
   user         User              @relation(fields: [userId], references: [id], onDelete: Cascade)

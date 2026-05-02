@@ -4,7 +4,8 @@ import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   X, Loader2, Check, Server, Cloud, MonitorCog,
-  Container, Search, AlertCircle, ChevronRight, Cpu, Box
+  Container, Search, AlertCircle, ChevronRight, Cpu, Box,
+  XCircle, CheckCircle2, FolderArchive
 } from "lucide-react";
 
 interface AwsResource {
@@ -52,6 +53,14 @@ export default function InstanceSelectModal({
   const [selected, setSelected] = useState<AwsResource | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
+  const [errorDetail, setErrorDetail] = useState<{
+    failedStep?: string;
+    failedStepLabel?: string;
+    failedResourceName?: string;
+    stepError?: string;
+    provisioningSteps?: any[];
+  } | null>(null);
+  const [provisionedBucket, setProvisionedBucket] = useState<string | null>(null);
 
   // On open, discover resources and try auto-match
   useEffect(() => {
@@ -63,16 +72,15 @@ export default function InstanceSelectModal({
 
     (async () => {
       try {
-        const res = await fetch("/api/integration/discover", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credentialId }),
-        });
+        // GET route — pass credentialId as a query param, not a POST body
+        const res = await fetch(`/api/integration/discover?credentialId=${encodeURIComponent(credentialId)}`);
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        const discovered: AwsResource[] = data.resources || [];
+        // API returns { mappings: RepoMatch[] } where each entry has { resource, bestMatch, confidence }
+        const discovered: AwsResource[] = (data.mappings || []).map((m: any) => m.resource);
         setResources(discovered);
+
 
         // Try auto-match: find resource whose name matches the repo name
         const repoLower = repoName.toLowerCase();
@@ -102,6 +110,7 @@ export default function InstanceSelectModal({
   // Provision the selected/confirmed resource
   const handleProvision = async (resource: AwsResource) => {
     setStep("provisioning");
+    setErrorDetail(null);
     try {
       const res = await fetch("/api/integration/provision", {
         method: "POST",
@@ -118,7 +127,18 @@ export default function InstanceSelectModal({
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) {
+        // Capture structured error detail from the API
+        setErrorDetail({
+          failedStep: data.failedStep,
+          failedStepLabel: data.failedStepLabel,
+          failedResourceName: data.failedResourceName,
+          stepError: data.stepError,
+          provisioningSteps: data.provisioningSteps,
+        });
+        throw new Error(data.error || "Provisioning failed");
+      }
+      setProvisionedBucket(data.bucketName || null);
       setStep("success");
       onSuccess?.();
     } catch (err: any) {
@@ -147,6 +167,7 @@ export default function InstanceSelectModal({
     setAutoMatch(null);
     setSelected(null);
     setErrorMsg("");
+    setErrorDetail(null);
     onClose();
   };
 
@@ -378,23 +399,49 @@ export default function InstanceSelectModal({
                   initial={{ opacity: 0 }}
                   animate={{ opacity: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center justify-center py-12 gap-4"
+                  className="flex flex-col items-center justify-center py-8 gap-5"
                 >
                   <div className="relative">
-                    <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/20 flex items-center justify-center">
-                      <Cloud className="w-7 h-7 text-orange-400" />
+                    <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-orange-500/10 to-amber-500/5 border border-orange-500/20 flex items-center justify-center">
+                      <Cloud className="w-6 h-6 text-orange-400" />
                     </div>
                     <motion.div
-                      className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full bg-zinc-950 border border-white/10 flex items-center justify-center"
+                      className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-zinc-950 border border-white/10 flex items-center justify-center"
                       animate={{ rotate: 360 }}
                       transition={{ repeat: Infinity, duration: 1.2, ease: "linear" }}
                     >
-                      <Loader2 className="w-3.5 h-3.5 text-orange-400" />
+                      <Loader2 className="w-3 h-3 text-orange-400" />
                     </motion.div>
                   </div>
-                  <div className="text-center">
+                  <div className="text-center mb-2">
                     <p className="text-sm font-medium text-white">Setting up log pipeline…</p>
-                    <p className="text-xs text-zinc-500 mt-1">Creating S3 bucket, IAM roles & Firehose stream</p>
+                    <p className="text-xs text-zinc-500 mt-1">Provisioning AWS resources for your repo</p>
+                  </div>
+                  {/* Step-by-step progress */}
+                  <div className="w-full space-y-1.5">
+                    {[
+                      { id: "validate", label: "Validate Credentials" },
+                      { id: "s3", label: "Create S3 Bucket" },
+                      { id: "iam", label: "Create IAM Roles" },
+                      { id: "firehose", label: "Create Firehose Stream" },
+                      { id: "cloudwatch", label: "Subscribe Log Groups" },
+                      { id: "db", label: "Save Integration" },
+                    ].map((s, idx) => (
+                      <motion.div
+                        key={s.id}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: idx * 0.08 }}
+                        className="flex items-center gap-2.5 px-3 py-2 rounded-lg bg-white/[0.02] border border-white/5 text-xs"
+                      >
+                        <motion.div
+                          animate={{ opacity: [0.3, 1, 0.3] }}
+                          transition={{ repeat: Infinity, duration: 1.5, delay: idx * 0.3 }}
+                          className="w-2 h-2 rounded-full bg-orange-400/60 flex-shrink-0"
+                        />
+                        <span className="text-zinc-400">{s.label}</span>
+                      </motion.div>
+                    ))}
                   </div>
                 </motion.div>
               )}
@@ -419,9 +466,34 @@ export default function InstanceSelectModal({
                   <div className="text-center">
                     <p className="text-sm font-medium text-white">Instance Connected!</p>
                     <p className="text-xs text-zinc-500 mt-1 max-w-xs leading-relaxed">
-                      Logs from this resource are now streaming to <span className="text-white font-medium">{repoName}</span>. You&apos;ll see data within ~60 seconds.
+                      Initial configuration completed successfully. Logs are now streaming via <b>CloudWatch</b> and <b>Firehose</b> to your S3 bucket.
                     </p>
                   </div>
+
+                  {provisionedBucket && (
+                    <div className="bg-white/[0.03] border border-white/5 rounded-xl px-4 py-3 w-full space-y-2">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[10px] uppercase tracking-wider text-zinc-500 font-bold">Log Storage</span>
+                        <div className="flex items-center gap-1.5">
+                          <div className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                          <span className="text-[10px] text-emerald-400 font-medium uppercase tracking-wider">Active</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-zinc-900 border border-white/10 flex items-center justify-center">
+                          <FolderArchive className="w-4 h-4 text-zinc-400" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[11px] text-zinc-400">S3 Bucket Name</p>
+                          <p className="text-xs text-white font-mono truncate">{provisionedBucket}</p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  <p className="text-[11px] text-zinc-600 text-center leading-relaxed">
+                    You&apos;ll see incoming data in the dashboard within ~60 seconds as it propagates through the pipeline.
+                  </p>
                 </motion.div>
               )}
 
@@ -432,15 +504,63 @@ export default function InstanceSelectModal({
                   initial={{ opacity: 0, scale: 0.95 }}
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0 }}
-                  className="flex flex-col items-center justify-center py-12 gap-4"
+                  className="flex flex-col items-center py-6 gap-4"
                 >
-                  <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
-                    <AlertCircle className="w-7 h-7 text-red-400" />
+                  <div className="w-14 h-14 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center">
+                    <AlertCircle className="w-6 h-6 text-red-400" />
                   </div>
                   <div className="text-center">
-                    <p className="text-sm font-medium text-white">Something went wrong</p>
-                    <p className="text-xs text-red-400/70 mt-1 max-w-xs">{errorMsg}</p>
+                    <p className="text-sm font-medium text-white">Provisioning Failed</p>
+                    {errorDetail?.failedStepLabel && (
+                      <p className="text-xs text-red-400 mt-1">
+                        Failed at: <span className="font-semibold">{errorDetail.failedStepLabel}</span>
+                      </p>
+                    )}
+                    {errorDetail?.failedResourceName && (
+                      <p className="text-[11px] text-zinc-400 mt-1">
+                        Resource: <span className="font-mono text-zinc-300">{errorDetail.failedResourceName}</span>
+                      </p>
+                    )}
+                    {errorDetail?.stepError && (
+                      <p className="text-[11px] text-red-400/60 mt-1.5 max-w-xs leading-relaxed">{errorDetail.stepError}</p>
+                    )}
                   </div>
+
+                  {/* Provisioning step breakdown */}
+                  {errorDetail?.provisioningSteps && errorDetail.provisioningSteps.length > 0 && (
+                    <div className="w-full space-y-1 mt-1">
+                      {errorDetail.provisioningSteps.map((s: any) => (
+                        <div
+                          key={s.step}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 rounded text-xs ${
+                            s.status === "success"
+                              ? "bg-emerald-500/5 text-emerald-400/80"
+                              : s.status === "failed"
+                                ? "bg-red-500/8 text-red-400"
+                                : "bg-white/[0.02] text-zinc-600"
+                          }`}
+                        >
+                          {s.status === "success" ? (
+                            <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                          ) : s.status === "failed" ? (
+                            <XCircle className="w-3 h-3 flex-shrink-0" />
+                          ) : (
+                            <div className="w-3 h-3 rounded-full border border-zinc-700 flex-shrink-0" />
+                          )}
+                          <span className="flex-1">{s.label}</span>
+                          {s.resourceName && s.status !== "pending" && (
+                            <span className="font-mono text-[10px] text-zinc-500 truncate max-w-[140px]">
+                              {s.resourceName}
+                            </span>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {!errorDetail?.provisioningSteps && (
+                    <p className="text-xs text-red-400/70 max-w-xs text-center">{errorMsg}</p>
+                  )}
                 </motion.div>
               )}
 

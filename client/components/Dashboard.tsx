@@ -3,11 +3,27 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
-import { motion } from "framer-motion";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   LayoutGrid, ScrollText, Search, MoreHorizontal, GitBranch, GitCommit,
-  Plus, ChevronDown, AlignJustify, BarChart2, Cloud, Loader2
+  Plus, ChevronDown, AlignJustify, BarChart2, Cloud, Loader2,
+  AlertTriangle, CheckCircle2, XCircle, ChevronRight, RefreshCw
 } from "lucide-react";
+
+interface FailedStep {
+  step: string;
+  label: string;
+  resourceName?: string;
+  error?: string;
+}
+
+interface ProvisioningStep {
+  step: string;
+  label: string;
+  status: "pending" | "success" | "failed" | "skipped";
+  resourceName?: string;
+  error?: string;
+}
 
 export default function Dashboard() {
   const { data: session } = useSession();
@@ -15,6 +31,7 @@ export default function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [view, setView] = useState<"grid" | "list">("grid");
+  const [expandedError, setExpandedError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/integration/mappings")
@@ -111,45 +128,166 @@ export default function Dashboard() {
           </motion.div>
         ) : (
           <div className={view === "grid" ? "grid grid-cols-3 gap-3" : "space-y-2"}>
-            {filtered.map((project, i) => (
-              <Link href={`/repo/${project.name}`} key={project.id}>
+            {filtered.map((project, i) => {
+              const isFailed = project.status === "failed";
+              const failedStep: FailedStep | null = project.failedStep;
+              const provSteps: ProvisioningStep[] = project.provisioningSteps || [];
+              const isExpanded = expandedError === project.id;
+
+              return (
                 <motion.div
+                  key={project.id}
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: i * 0.06 }}
-                  className="bg-zinc-900/60 border border-white/8 rounded-xl p-4 hover:border-white/15 transition-colors cursor-pointer h-full block"
+                  className={`bg-zinc-900/60 border rounded-xl p-4 transition-colors h-full block ${
+                    isFailed
+                      ? "border-red-500/20 hover:border-red-500/35"
+                      : "border-white/8 hover:border-white/15"
+                  }`}
                 >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-md bg-gradient-to-br from-zinc-600 to-zinc-800 flex items-center justify-center text-xs font-bold uppercase">
-                        {project.name[0]}
+                  {/* Card Header — clickable to repo only if active */}
+                  {isFailed ? (
+                    <div>
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-red-700 to-red-900 flex items-center justify-center text-xs font-bold uppercase">
+                            {project.name[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white truncate max-w-[140px]">{project.name}</p>
+                            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{project.resourceType}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="text-[10px] px-1.5 py-0.5 rounded-full border bg-red-500/10 border-red-500/20 text-red-400 font-semibold uppercase tracking-wider">
+                            Failed
+                          </div>
+                        </div>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-white truncate max-w-[140px]">{project.name}</p>
-                        <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{project.resourceType}</p>
+
+                      {/* Failed Step Callout */}
+                      {failedStep && (
+                        <div className="bg-red-500/5 border border-red-500/15 rounded-lg p-3 mb-3">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <XCircle className="w-3.5 h-3.5 text-red-400 flex-shrink-0" />
+                            <p className="text-xs font-semibold text-red-300">
+                              Failed: {failedStep.label}
+                            </p>
+                          </div>
+                          {failedStep.resourceName && (
+                            <p className="text-[11px] text-zinc-400 ml-5.5 mb-1">
+                              <span className="text-zinc-500">Resource: </span>
+                              <span className="font-mono text-zinc-300">{failedStep.resourceName}</span>
+                            </p>
+                          )}
+                          {failedStep.error && (
+                            <p className="text-[11px] text-red-400/70 ml-5.5 leading-relaxed line-clamp-2">
+                              {failedStep.error}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Expand/Collapse Provisioning Steps */}
+                      {provSteps.length > 0 && (
+                        <button
+                          onClick={() => setExpandedError(isExpanded ? null : project.id)}
+                          className="flex items-center gap-1.5 text-[11px] text-zinc-500 hover:text-zinc-300 transition-colors mb-2 w-full"
+                        >
+                          <ChevronRight className={`w-3 h-3 transition-transform ${isExpanded ? "rotate-90" : ""}`} />
+                          {isExpanded ? "Hide provisioning details" : "Show all steps"}
+                        </button>
+                      )}
+
+                      <AnimatePresence>
+                        {isExpanded && (
+                          <motion.div
+                            initial={{ height: 0, opacity: 0 }}
+                            animate={{ height: "auto", opacity: 1 }}
+                            exit={{ height: 0, opacity: 0 }}
+                            className="overflow-hidden"
+                          >
+                            <div className="space-y-1 mb-3">
+                              {provSteps.map((step) => (
+                                <div
+                                  key={step.step}
+                                  className={`flex items-center gap-2 px-2.5 py-1.5 rounded text-xs ${
+                                    step.status === "success"
+                                      ? "bg-emerald-500/5 text-emerald-400/80"
+                                      : step.status === "failed"
+                                        ? "bg-red-500/5 text-red-400"
+                                        : "bg-white/[0.02] text-zinc-600"
+                                  }`}
+                                >
+                                  {step.status === "success" ? (
+                                    <CheckCircle2 className="w-3 h-3 flex-shrink-0" />
+                                  ) : step.status === "failed" ? (
+                                    <XCircle className="w-3 h-3 flex-shrink-0" />
+                                  ) : (
+                                    <div className="w-3 h-3 rounded-full border border-zinc-700 flex-shrink-0" />
+                                  )}
+                                  <span className="flex-1">{step.label}</span>
+                                  {step.resourceName && step.status !== "pending" && (
+                                    <span className="font-mono text-[10px] text-zinc-500 truncate max-w-[120px]">
+                                      {step.resourceName}
+                                    </span>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          </motion.div>
+                        )}
+                      </AnimatePresence>
+
+                      {/* General metadata */}
+                      <div className="text-xs text-zinc-500 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <GitBranch className="w-3 h-3" />
+                          <span className="truncate">{project.credentialLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Cloud className="w-3 h-3" />
+                          <span className="truncate">{project.resourceId}</span>
+                        </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <div className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
-                        project.status === 'active' ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
-                      }`}>
-                        {project.status}
+                  ) : (
+                    // Normal active project card
+                    <Link href={`/repo/${project.name}`} className="block h-full">
+                      <div className="flex items-start justify-between mb-3">
+                        <div className="flex items-center gap-2">
+                          <div className="w-7 h-7 rounded-md bg-gradient-to-br from-zinc-600 to-zinc-800 flex items-center justify-center text-xs font-bold uppercase">
+                            {project.name[0]}
+                          </div>
+                          <div>
+                            <p className="text-sm font-medium text-white truncate max-w-[140px]">{project.name}</p>
+                            <p className="text-[10px] text-zinc-500 uppercase tracking-wider">{project.resourceType}</p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className={`text-[10px] px-1.5 py-0.5 rounded-full border ${
+                            project.status === 'active' ? 'bg-green-500/10 border-green-500/20 text-green-400' : 'bg-amber-500/10 border-amber-500/20 text-amber-400'
+                          }`}>
+                            {project.status}
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                  <div className="text-xs text-zinc-500 space-y-1">
-                    <div className="flex items-center gap-1.5">
-                      <GitBranch className="w-3 h-3" />
-                      <span className="truncate">{project.credentialLabel}</span>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      <Cloud className="w-3 h-3" />
-                      <span className="truncate">{project.resourceId}</span>
-                    </div>
-                  </div>
+                      <div className="text-xs text-zinc-500 space-y-1">
+                        <div className="flex items-center gap-1.5">
+                          <GitBranch className="w-3 h-3" />
+                          <span className="truncate">{project.credentialLabel}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <Cloud className="w-3 h-3" />
+                          <span className="truncate">{project.resourceId}</span>
+                        </div>
+                      </div>
+                    </Link>
+                  )}
                 </motion.div>
-              </Link>
-            ))}
+              );
+            })}
 
             {/* Add new card */}
             <Link
