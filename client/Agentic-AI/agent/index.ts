@@ -138,7 +138,7 @@ export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
       recommendedAction: "alert_only",
       confidence: 0.0,
       evidence: []
-    } : rcaResult as AgentOutput;
+    } : (rcaResult as AgentOutput);
 
     // 5. Verify
     let verification: VerificationResult;
