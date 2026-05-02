@@ -17,7 +17,9 @@ export function handleFailure(error: unknown, input: AgentInput): FallbackRespon
       reason = (error as any).reason || "parse_error";
       message = "Failed to parse structured LLM response.";
     } else if (error instanceof LLMError) {
-      reason = error.reason;
+      if (error.reason === "timeout") reason = "llm_timeout";
+      else if (error.reason === "api_error") reason = "llm_api_error";
+      else reason = error.reason;
       message = error.message;
     }
   } else if (error instanceof Error) {
