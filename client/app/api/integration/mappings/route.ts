@@ -93,7 +93,11 @@ export async function GET() {
       include: {
         integrations: {
           include: {
-            mappings: true,
+            mappings: {
+              include: {
+                repository: true
+              }
+            },
             credentials: true
           }
         }
@@ -102,18 +106,21 @@ export async function GET() {
 
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    // Flatten mappings into a clean "project" list
+    // Flatten mappings into a clean "project" list, filtering out soft-deleted repos
     const projects = user.integrations.flatMap(integration => 
-      integration.mappings.map(mapping => ({
-        id: mapping.id,
-        name: mapping.repoFullName.split("/")[1] || mapping.repoFullName,
-        repo: mapping.repoFullName,
-        credentialLabel: integration.credentials.label || "AWS Account",
-        resourceId: mapping.resourceId,
-        resourceType: mapping.resourceType,
-        status: integration.status,
-        updatedAt: mapping.updatedAt
-      }))
+      integration.mappings
+        .filter(mapping => !mapping.repository || mapping.repository.deletedAt === null)
+        .map(mapping => ({
+          id: mapping.id,
+          repoId: mapping.repositoryId,
+          name: mapping.repoFullName.split("/")[1] || mapping.repoFullName,
+          repo: mapping.repoFullName,
+          credentialLabel: integration.credentials.label || "AWS Account",
+          resourceId: mapping.resourceId,
+          resourceType: mapping.resourceType,
+          status: integration.status,
+          updatedAt: mapping.updatedAt
+        }))
     );
 
     return NextResponse.json({ success: true, projects });
