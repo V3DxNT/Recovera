@@ -131,7 +131,38 @@ model Repository {
 
   user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   mappings      InstanceMapping[]
+  incidents     Incident[]
 
   @@unique([userId, fullName])
 }
 
+model Incident {
+  id            String          @id @default(cuid())
+  repositoryId  String
+  title         String
+  severity      String          @default("medium")
+  status        String          @default("open")
+  fingerprint   String
+  firstSeenAt   DateTime        @default(now())
+  lastSeenAt    DateTime        @default(now())
+  eventCount    Int             @default(1)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+
+  repository    Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+  patches       PatchArtifact[]
+}
+
+model PatchArtifact {
+  id               String   @id @default(cuid())
+  incidentId       String
+  patchDiff        String   @db.Text
+  changeSummary    String   @db.Text
+  riskScore        Float
+  validationStatus String   @default("pending") // pending, passed, failed
+  validationLogs   String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  incident         Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
+}
