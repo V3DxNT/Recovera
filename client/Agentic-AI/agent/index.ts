@@ -132,7 +132,7 @@ export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
       reasoning: "The agent failed to produce a valid structured response.",
       requires_approval: true,
       evidence: []
-    } : rcaResult;
+    } : (rcaResult as AgentOutput);
 
     // 5. Verify
     let verification: VerificationResult;

@@ -4,12 +4,14 @@
 // Get a free hosted Postgres database in seconds: `npx create-db`
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider        = "prisma-client"
+  output          = "../generated/prisma"
+  previewFeatures = ["postgresqlExtensions"]
 }
 
 datasource db {
-  provider = "postgresql"
+  provider   = "postgresql"
+  extensions = [vector]
 }
 
 model User {
@@ -131,7 +133,36 @@ model Repository {
 
   user          User              @relation(fields: [userId], references: [id], onDelete: Cascade)
   mappings      InstanceMapping[]
+  codeChunks    CodeChunk[]
+  indexJobs     IndexJob[]
 
   @@unique([userId, fullName])
 }
 
+model CodeChunk {
+  id           String     @id @default(cuid())
+  repositoryId String
+  path         String     // File path within repo
+  content      String     @db.Text
+  embedding    Unsupported("vector(768)")?
+  startLine    Int
+  endLine      Int
+  commitSha    String
+  createdAt    DateTime   @default(now())
+
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+
+  @@index([repositoryId, path])
+}
+
+model IndexJob {
+  id           String     @id @default(cuid())
+  repositoryId String
+  status       String     // "pending", "processing", "completed", "failed"
+  commitSha    String
+  error        String?    @db.Text
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  repository   Repository @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
+}

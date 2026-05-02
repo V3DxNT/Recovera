@@ -1,0 +1,20 @@
+# Architecture Roadmap: Codebase Mapping (Retrieval Layer)
+
+## Phase 1: Core Vector Indexing (Completed)
+- **Database Support**: PostgreSQL `pgvector` extension integration via Prisma (`Unsupported("vector(768)")`).
+- **Embedding Provider**: `@google/genai` using `text-embedding-004` model.
+- **Background Worker**: `repo-indexer.ts` fetching via git clone and executing batch processing.
+- **Search API**: Hybrid retrieval approach combining Cosine Distance and AI Reranking.
+- **Webhooks**: Incremental indexing triggered via GitHub `push` events.
+- **LLM Reranker**: Integration of `callLLM` to rerank and filter chunks with high precision, utilizing Gemini as primary and Groq as fallback.
+
+## Phase 2: Performance and Scaling (Upcoming)
+- **Message Queueing**: Shift the `repo-indexer` synchronous triggering into an event-driven SQS/RabbitMQ pipeline to handle high volume webhooks without timing out in serverless environments.
+- **Smart Stale-Index Detection**: Only index diffs/changed files rather than tearing down and rebuilding the entire index on every commit.
+- **Syntax-Aware Chunking**: Move from line-based splitting to AST-aware boundaries (e.g., Tree-sitter for TS/JS/Python) to preserve complete function blocks.
+- **Token Budget Caps**: Ensure that the cross-encoder/reranker handles exceedingly large retrieved contexts gracefully without OOM or API token exhaustion.
+
+## Phase 3: Advanced Quality Heuristics (Future)
+- **Knowledge Graphs**: Build a graph of dependencies between files to boost chunks that are logically connected to the stack trace frames.
+- **Retrieval Quality Metrics**: Automated tests (Recall@K / MRR) triggered on CI using a golden dataset of labeled incidents.
+- **Multi-Tenant Sharding**: Implement strict row-level security or partitioned tables for code chunks in highly compliant multi-tenant environments.
