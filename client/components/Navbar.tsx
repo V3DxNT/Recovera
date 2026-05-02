@@ -36,7 +36,6 @@ export default function Navbar() {
           <nav className="hidden md:flex gap-6">
             <Link href="#features" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Product</Link>
             <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Docs</Link>
-            <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Changelog</Link>
             <Link href="#" className="text-sm font-medium text-zinc-400 hover:text-white transition-colors">Pricing</Link>
           </nav>
         </div>

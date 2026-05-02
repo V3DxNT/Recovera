@@ -1,4 +1,10 @@
+"use client";
+
+import Link from "next/link";
+import { useSession, signIn } from "next-auth/react";
+
 export default function FinalCTA() {
+  const { data: session } = useSession();
   return (
     <section className="py-40 bg-black relative flex items-center justify-center border-t border-white/10 overflow-hidden">
       
@@ -14,12 +20,21 @@ export default function FinalCTA() {
         </p>
         
         <div className="flex flex-col sm:flex-row items-center gap-4 w-full sm:w-auto">
-          <button className="w-full sm:w-auto px-8 py-4 text-sm font-medium text-black bg-white rounded-md hover:bg-zinc-200 transition-colors">
-            Start building for free
-          </button>
-          <button className="w-full sm:w-auto px-8 py-4 text-sm font-medium text-zinc-300 bg-transparent border border-white/10 rounded-md hover:bg-white/[0.05] transition-colors">
-            Talk to an expert
-          </button>
+          {session ? (
+            <Link href="/dashboard" className="w-full sm:w-auto px-8 py-4 text-sm font-medium text-black bg-white rounded-md hover:bg-zinc-200 transition-colors text-center">
+              Go to Dashboard
+            </Link>
+          ) : (
+            <button 
+              onClick={() => signIn('github', { callbackUrl: '/dashboard' })}
+              className="w-full sm:w-auto px-8 py-4 text-sm font-medium text-black bg-white rounded-md hover:bg-zinc-200 transition-colors"
+            >
+              Start building for free
+            </button>
+          )}
+          <Link href="#engine" className="w-full sm:w-auto px-8 py-4 text-sm font-medium text-zinc-300 bg-transparent border border-white/10 rounded-md hover:bg-white/[0.05] transition-colors text-center">
+            Watch live demo
+          </Link>
         </div>
       </div>
     </section>
