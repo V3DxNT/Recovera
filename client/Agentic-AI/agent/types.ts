@@ -37,18 +37,24 @@ export interface AgentInput {
 }
 
 export type ActionType =
-  | "fix_s3_public_access"
-  | "restrict_iam_policy"
-  | "close_security_group_port"
+  | "generate_fix"
+  | "rollback"
+  | "human_only"
   | "alert_only"
   | "unknown";
 
 export interface AgentOutput {
-  root_cause: string;
+  rootCauseSummary: string;
+  failureMechanism: string;
+  likelySubsystem: string;
+  likelyFiles: Array<{
+    path: string;
+    reason: string;
+    confidence: number;
+  }>;
+  fixStrategy: string[];
+  recommendedAction: ActionType;
   confidence: number;
-  action: ActionType;
-  reasoning: string;
-  requires_approval: boolean;
   evidence: string[];
 }
 

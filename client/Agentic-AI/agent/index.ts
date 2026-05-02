@@ -55,11 +55,13 @@ function buildSkipReport(input: AgentInput, skipReason: string): DiagnosticRepor
       ]
     },
     raw_output: {
-      root_cause: "Unknown (skipped)",
+      rootCauseSummary: "Unknown (skipped)",
+      failureMechanism: "None",
+      likelySubsystem: "Unknown",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "alert_only",
       confidence: 1.0,
-      action: "alert_only",
-      reasoning: "Execution skipped due to idempotency guard.",
-      requires_approval: false,
       evidence: []
     },
     generated_at: new Date().toISOString(),
@@ -72,7 +74,7 @@ function getMockFixture(input: AgentInput): DiagnosticReport {
     incident_id: input.incident_id,
     summary: "Mock report generated.",
     root_cause: "Mocked root cause (S3 public access enabled)",
-    action_taken: "fix_s3_public_access",
+    action_taken: "alert_only",
     decision_path: "auto_fix",
     verification: {
       resolved: true,
@@ -90,11 +92,13 @@ function getMockFixture(input: AgentInput): DiagnosticReport {
       ]
     },
     raw_output: {
-      root_cause: "Mocked root cause",
+      rootCauseSummary: "Mocked root cause",
+      failureMechanism: "Misconfiguration",
+      likelySubsystem: "S3",
+      likelyFiles: [],
+      fixStrategy: ["Disable public access block"],
+      recommendedAction: "alert_only",
       confidence: 0.90,
-      action: "fix_s3_public_access",
-      reasoning: "Mocked reasoning",
-      requires_approval: false,
       evidence: []
     },
     generated_at: new Date().toISOString()
@@ -126,11 +130,13 @@ export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
     const decision = decide(rcaResult);
 
     const safeOutput: AgentOutput = "kind" in rcaResult && rcaResult.kind === "ParseError" ? {
-      root_cause: "Failed to parse LLM output",
+      rootCauseSummary: "Failed to parse LLM output",
+      failureMechanism: "failed to produce a valid structured response",
+      likelySubsystem: "AI Agent",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "alert_only",
       confidence: 0.0,
-      action: "alert_only",
-      reasoning: "The agent failed to produce a valid structured response.",
-      requires_approval: true,
       evidence: []
     } : (rcaResult as AgentOutput);
 
@@ -160,11 +166,13 @@ export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
     const fallback = handleFailure(error, input);
     
     const fallbackOutput: AgentOutput = {
-      root_cause: fallback.message,
+      rootCauseSummary: fallback.message,
+      failureMechanism: `Agent execution failed: ${fallback.reason}`,
+      likelySubsystem: "AI Agent",
+      likelyFiles: [],
+      fixStrategy: [],
+      recommendedAction: "alert_only",
       confidence: 0.0,
-      action: "alert_only",
-      reasoning: `Agent execution failed: ${fallback.reason}`,
-      requires_approval: true,
       evidence: []
     };
 

@@ -1,16 +1,16 @@
 import { processNormalizedEvent, detectEventType } from "../../lib/detection/detector";
 import { runAgent } from "../../Agentic-AI/agent";
-import { PrismaClient } from "@prisma/client";
-
 // Mock runAgent
 jest.mock("../../Agentic-AI/agent", () => ({
   runAgent: jest.fn(async (input: any) => {
     return {
       incident_id: input.incident_id,
       summary: "Mock report",
-      root_cause: "Mocked cause",
-      action_taken: "alert_only",
-      decision_path: "alert_only",
+      rootCauseSummary: "Mocked cause",
+      recommendedAction: "alert_only",
+      failureMechanism: "Crash",
+      likelyFiles: [],
+      likelySubsystem: "Unknown",
       verification: {
         resolved: false,
         evidence: "none",
@@ -22,12 +22,12 @@ jest.mock("../../Agentic-AI/agent", () => ({
       requires_human_review: false,
       notification: { text: "Mock", blocks: [] },
       raw_output: {
-        root_cause: "Mocked cause",
+        rootCauseSummary: "Mocked cause",
         confidence: 0.9,
-        action: "alert_only",
-        reasoning: "none",
-        requires_approval: false,
-        evidence: []
+        recommendedAction: "alert_only",
+        failureMechanism: "Crash",
+        likelyFiles: [],
+        likelySubsystem: "Unknown"
       },
       generated_at: new Date().toISOString()
     };
@@ -35,7 +35,7 @@ jest.mock("../../Agentic-AI/agent", () => ({
 }));
 
 // Mock Prisma
-jest.mock("@prisma/client", () => {
+jest.mock("../../lib/prisma", () => {
   const mockFindUnique = jest.fn();
   const mockIncidentUpsert = jest.fn();
   const mockEventUpsert = jest.fn();
@@ -52,7 +52,7 @@ jest.mock("@prisma/client", () => {
   }));
 
   return {
-    PrismaClient: jest.fn().mockImplementation(() => ({
+    prisma: {
       incidentEvent: {
         findUnique: mockFindUnique,
         upsert: mockEventUpsert,
@@ -71,7 +71,7 @@ jest.mock("@prisma/client", () => {
         create: jest.fn()
       },
       $transaction: mockTransaction
-    })),
+    },
     __mocks__: {
       mockFindUnique,
       mockIncidentUpsert,
@@ -84,7 +84,7 @@ jest.mock("@prisma/client", () => {
   };
 });
 
-const { __mocks__ } = require("@prisma/client");
+const { __mocks__ } = require("../../lib/prisma");
 const { mockFindUnique, mockIncidentUpsert, mockEventUpsert, mockRepoFindFirst, mockTransaction, mockAuditUpsert, mockEventUpdate } = __mocks__;
 
 

@@ -1,12 +1,10 @@
 import * as fs from "fs/promises";
 import * as path from "path";
 import * as crypto from "crypto";
-import { PrismaClient } from "@prisma/client";
+import { prisma } from "../prisma";
 import { NormalizedLogEvent } from "../ingest/types";
 import { runAgent } from "../../Agentic-AI/agent";
 import { AgentInput, EventType, IncidentStatus, ResourceSnapshot } from "../../Agentic-AI/agent/types";
-
-const prisma = new PrismaClient();
 const BASE_DIR = path.join(process.cwd(), ".recovera-ingest");
 const QUEUE_FILE = path.join(BASE_DIR, "queue.ndjson");
 

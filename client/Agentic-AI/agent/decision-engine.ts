@@ -20,8 +20,8 @@ export function decide(output: AgentOutput | ParseError): DecisionResult {
 
   const validOutput = output as AgentOutput;
 
-  // 2. output.action === "unknown" -> alert_only, reason "unknown_action"
-  if (validOutput.action === "unknown") {
+  // 2. output.recommendedAction === "unknown" -> alert_only, reason "unknown_action"
+  if (validOutput.recommendedAction === "unknown") {
     return {
       path: "alert_only",
       action: "unknown",
@@ -31,14 +31,14 @@ export function decide(output: AgentOutput | ParseError): DecisionResult {
     };
   }
 
-  // 3. safetyClass = getSafetyClass(output.action)
-  const safetyClass = getSafetyClass(validOutput.action);
+  // 3. safetyClass = getSafetyClass(output.recommendedAction)
+  const safetyClass = getSafetyClass(validOutput.recommendedAction);
 
   // 4. safetyClass === "blocked" -> alert_only, reason "blocked_action"
   if (safetyClass === "blocked") {
     return {
       path: "alert_only",
-      action: validOutput.action,
+      action: validOutput.recommendedAction,
       reason: "blocked_action",
       confidence: validOutput.confidence,
       safety_class: safetyClass
@@ -49,7 +49,7 @@ export function decide(output: AgentOutput | ParseError): DecisionResult {
   if (validOutput.confidence < CONFIDENCE_MIN_ACTION) {
     return {
       path: "alert_only",
-      action: validOutput.action,
+      action: validOutput.recommendedAction,
       reason: "low_confidence",
       confidence: validOutput.confidence,
       safety_class: safetyClass
@@ -60,7 +60,7 @@ export function decide(output: AgentOutput | ParseError): DecisionResult {
   if (validOutput.confidence >= CONFIDENCE_AUTO_FIX && safetyClass === "safe") {
     return {
       path: "auto_fix",
-      action: validOutput.action,
+      action: validOutput.recommendedAction,
       reason: "high_confidence_safe_action",
       confidence: validOutput.confidence,
       safety_class: safetyClass
@@ -71,7 +71,7 @@ export function decide(output: AgentOutput | ParseError): DecisionResult {
   if (validOutput.confidence >= CONFIDENCE_MIN_ACTION && safetyClass === "needs_approval") {
     return {
       path: "approval_required",
-      action: validOutput.action,
+      action: validOutput.recommendedAction,
       reason: "needs_approval_policy",
       confidence: validOutput.confidence,
       safety_class: safetyClass
@@ -81,7 +81,7 @@ export function decide(output: AgentOutput | ParseError): DecisionResult {
   // 8. Default -> alert_only, reason "policy_default"
   return {
     path: "alert_only",
-    action: validOutput.action,
+    action: validOutput.recommendedAction,
     reason: "policy_default",
     confidence: validOutput.confidence,
     safety_class: safetyClass

@@ -29,11 +29,16 @@ REPO CONTEXT:
 
 AgentOutput:
 {
-  "root_cause": "Bucket has public read access via a wildcard policy statement and Public Access Block is disabled.",
+  "rootCauseSummary": "Bucket has public read access via a wildcard policy statement and Public Access Block is disabled.",
+  "failureMechanism": "The bucket policy explicitly allows Principal '*' to perform s3:GetObject. The Public Access Block configuration is entirely disabled, allowing this policy to take effect. CloudTrail shows this was recently modified.",
+  "likelySubsystem": "S3/IAM",
+  "likelyFiles": [],
+  "fixStrategy": [
+    "Enable Public Access Block on bucket 'my-corp-customer-data'",
+    "Remove wildcard Principal from bucket policy"
+  ],
+  "recommendedAction": "generate_fix",
   "confidence": 0.90,
-  "action": "fix_s3_public_access",
-  "reasoning": "The bucket policy explicitly allows Principal '*' to perform s3:GetObject. The Public Access Block configuration is entirely disabled, allowing this policy to take effect. CloudTrail shows this was recently modified.",
-  "requires_approval": false,
   "evidence": [
     "PublicAccessBlockConfiguration has BlockPublicPolicy set to false",
     "Policy allows Principal '*' with Action 's3:GetObject'",
@@ -61,11 +66,13 @@ REPO CONTEXT:
 
 AgentOutput:
 {
-  "root_cause": "Event type unknown. Manual review required.",
+  "rootCauseSummary": "Event type unknown. Manual review required.",
+  "failureMechanism": "The event type is unrecognized and no resource state or logs are available to diagnose the issue.",
+  "likelySubsystem": "Unknown",
+  "likelyFiles": [],
+  "fixStrategy": [],
+  "recommendedAction": "alert_only",
   "confidence": 0.30,
-  "action": "alert_only",
-  "reasoning": "The event type is unrecognized and no resource state or logs are available to diagnose the issue.",
-  "requires_approval": true,
   "evidence": []
 }`;
 
