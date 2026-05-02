@@ -36,6 +36,7 @@ export async function GET(req: NextRequest) {
       include: {
         patches: { orderBy: { createdAt: "desc" } },
         actions: { orderBy: { createdAt: "desc" } },
+        rcaVersions: { orderBy: { createdAt: "desc" }, take: 1 },
       }
     });
 

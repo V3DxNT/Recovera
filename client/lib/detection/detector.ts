@@ -4,9 +4,9 @@ import * as crypto from "crypto";
 import { prisma } from "../prisma";
 import { NormalizedLogEvent } from "../ingest/types";
 import { runAgent } from "../../Agentic-AI/agent";
+import { runFullPipeline } from "../ai/orchestrator";
 import { AgentInput, EventType, IncidentStatus, ResourceSnapshot } from "../../Agentic-AI/agent/types";
-const BASE_DIR = path.join(process.cwd(), ".recovera-ingest");
-const QUEUE_FILE = path.join(BASE_DIR, "queue.ndjson");
+
 
 const FINGERPRINT_VERSION = "v1";
 
@@ -14,7 +14,7 @@ function generateFingerprint(log: NormalizedLogEvent): string {
   let normalizedMsg = log.messageRaw || "";
   normalizedMsg = normalizedMsg.replace(/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/ig, "<UUID>");
   normalizedMsg = normalizedMsg.replace(/\b\d+\b/g, "<NUM>");
-  
+
   const stackMatch = normalizedMsg.match(/at\s+.*?\s+\((.*?):\d+:\d+\)/);
   const stackTop = stackMatch ? stackMatch[1] : "unknown_location";
 
@@ -39,7 +39,7 @@ export function detectEventType(log: NormalizedLogEvent): EventType {
 
 export async function processNormalizedEvent(log: NormalizedLogEvent) {
   const fingerprint = generateFingerprint(log);
-  
+
   const existingEvent = await prisma.incidentEvent.findUnique({
     where: { eventId: log.eventId }
   });
@@ -104,7 +104,7 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
   if (incident.status === "open") agentStatus = "pending";
   if (incident.status === "investigating") agentStatus = "running";
   if (incident.status === "resolved" || incident.status === "mitigated") agentStatus = "done";
-  
+
   let state: ResourceSnapshot = { type: log.resourceType, config: {} };
   if (log.messageParsed && typeof log.messageParsed === "object") {
     state.config = log.messageParsed as Record<string, unknown>;
@@ -126,8 +126,8 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
 
   try {
     const report = await runAgent(agentInput);
-    
-    await prisma.$transaction(async (tx) => {
+
+    await prisma.$transaction(async (tx: any) => {
       await tx.incidentEvent.update({
         where: { id: incidentEvent.id },
         data: { processingStatus: "processed" }
@@ -162,6 +162,11 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
       }
     });
 
+    // Trigger the full pipeline (Steps 3-7) in the background
+    runFullPipeline(incident.id).catch(err => {
+      console.error(`[Detector] Orchestrator failed for incident ${incident.id}:`, err);
+    });
+
     return report;
   } catch (error) {
     console.error(`[Detector] Agent execution failed for event ${log.eventId}:`, error);
@@ -177,7 +182,7 @@ export async function processLocalQueue() {
   try {
     const files = await fs.readdir(BASE_DIR);
     const staleFiles = files.filter(f => f.startsWith("queue.processing-") && f.endsWith(".ndjson"));
-    
+
     for (const staleFile of staleFiles) {
       const filePath = path.join(BASE_DIR, staleFile);
       const stat = await fs.stat(filePath);
@@ -194,7 +199,7 @@ export async function processLocalQueue() {
   }
 
   const processingFile = path.join(BASE_DIR, `queue.processing-${Date.now()}.ndjson`);
-  
+
   try {
     await fs.rename(QUEUE_FILE, processingFile);
     await processQueueFile(processingFile);
@@ -209,7 +214,7 @@ async function processQueueFile(filePath: string) {
   try {
     const data = await fs.readFile(filePath, "utf-8");
     const lines = data.split("\n").filter(l => l.trim().length > 0);
-    
+
     console.log(`[Detector] Found ${lines.length} events in local queue.`);
 
     for (const line of lines) {
@@ -220,7 +225,7 @@ async function processQueueFile(filePath: string) {
         console.error("[Detector] Failed to process line:", err);
       }
     }
-    
+
     // Successfully processed, delete the processing file
     await fs.unlink(filePath);
   } catch (err) {

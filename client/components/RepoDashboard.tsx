@@ -8,9 +8,10 @@ import {
   ArrowLeft, Activity, AlertCircle, CheckCircle2,
   Clock, Server, Shield, Terminal, GitBranch,
   Settings, ExternalLink, BarChart3, Search,
-  MoreHorizontal, Play, CheckCircle, Cloud, Zap, Loader2
+  MoreHorizontal, Play, CheckCircle, Cloud, Zap, Loader2, Brain
 } from "lucide-react";
 import InstanceSelectModal from "./InstanceSelectModal";
+import AILiveFeed from "./AILiveFeed";
 
 type IntegrationInfo = {
   id: string;
@@ -77,6 +78,7 @@ type IncidentItem = {
   createdAt: string;
   patches?: IncidentPatch[];
   actions?: IncidentAction[];
+  rcaVersions?: any[];
 };
 
 export default function RepoDashboard({ repoName }: { repoName: string }) {
@@ -390,9 +392,8 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
             ))}
           </div>
 
-          {/* Middle Row: Issues Over Time & Environment */}
+          {/* Middle Row: Issues Over Time & AI Live Feed */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
             {/* Issues Graph */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -420,7 +421,6 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                           className={`w-full rounded-t-sm ${data.issues > 0 ? 'bg-amber-500/80 group-hover:bg-amber-400' : 'bg-white/10'}`}
                         />
                       </div>
-                      {/* Tooltip */}
                       <div className="absolute -top-8 bg-zinc-800 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100 pointer-events-none transition-opacity whitespace-nowrap z-10 border border-white/10 shadow-xl">
                         {data.issues} issues
                       </div>
@@ -430,7 +430,20 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                 })}
               </div>
             </motion.div>
+            
+            {/* AI Live Feed */}
+            <motion.div
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.3 }}
+              className="lg:col-span-1"
+            >
+              <AILiveFeed repoFullName={repoName} />
+            </motion.div>
+          </div>
 
+          {/* Environment Details Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Environment Details */}
             <motion.div
               initial={{ opacity: 0, y: 10 }}
@@ -603,6 +616,40 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                         <p className="text-sm text-zinc-400 mb-4">
                           Confidence Score: {(incident.confidence * 100).toFixed(0)}%
                         </p>
+                        
+                        {/* Automated Remediation Pipeline Visualizer */}
+                        <div className="flex items-center gap-2 mt-2 mb-4">
+                          <div className="flex flex-col items-center gap-1">
+                            <div className="w-6 h-6 rounded-full flex items-center justify-center bg-purple-500/20 text-purple-400 border border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]">
+                              <AlertCircle className="w-3 h-3" />
+                            </div>
+                            <span className="text-[9px] text-zinc-500 uppercase font-bold tracking-wider">Detected</span>
+                          </div>
+                          <div className={`w-8 h-px ${incident.rcaVersions && incident.rcaVersions.length > 0 ? 'bg-purple-500/50' : 'bg-white/10'}`} />
+                          
+                          <div className="flex flex-col items-center gap-1">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${incident.rcaVersions && incident.rcaVersions.length > 0 ? 'bg-purple-500/20 text-purple-400 border border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-white/5 text-zinc-600 border border-white/5'}`}>
+                              <Brain className="w-3 h-3" />
+                            </div>
+                            <span className={`text-[9px] uppercase font-bold tracking-wider ${incident.rcaVersions && incident.rcaVersions.length > 0 ? 'text-zinc-400' : 'text-zinc-600'}`}>RCA</span>
+                          </div>
+                          <div className={`w-8 h-px ${latestPatch ? 'bg-purple-500/50' : 'bg-white/10'}`} />
+                          
+                          <div className="flex flex-col items-center gap-1">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${latestPatch ? 'bg-purple-500/20 text-purple-400 border border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-white/5 text-zinc-600 border border-white/5'}`}>
+                              <Terminal className="w-3 h-3" />
+                            </div>
+                            <span className={`text-[9px] uppercase font-bold tracking-wider ${latestPatch ? 'text-zinc-400' : 'text-zinc-600'}`}>Fix Gen</span>
+                          </div>
+                          <div className={`w-8 h-px ${latestAction && latestAction.actionType === 'open_pr' ? 'bg-purple-500/50' : 'bg-white/10'}`} />
+                          
+                          <div className="flex flex-col items-center gap-1">
+                            <div className={`w-6 h-6 rounded-full flex items-center justify-center ${latestAction && latestAction.actionType === 'open_pr' ? 'bg-purple-500/20 text-purple-400 border border-purple-500/20 shadow-[0_0_10px_rgba(168,85,247,0.2)]' : 'bg-white/5 text-zinc-600 border border-white/5'}`}>
+                              <GitBranch className="w-3 h-3" />
+                            </div>
+                            <span className={`text-[9px] uppercase font-bold tracking-wider ${latestAction && latestAction.actionType === 'open_pr' ? 'text-zinc-400' : 'text-zinc-600'}`}>PR</span>
+                          </div>
+                        </div>
                       </div>
 
                       <div className="flex flex-col items-end gap-2">

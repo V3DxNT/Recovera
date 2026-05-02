@@ -106,28 +106,41 @@ function getMockFixture(input: AgentInput): DiagnosticReport {
 }
 
 export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
+  console.log(`\n[Agent] 🚀 Starting agent for incident: ${input.incident_id}`);
+  console.log(`[Agent] Event type: ${input.event} on resource: ${input.metadata.resource}`);
+
   // 1. Mock check
   if (process.env.AGENT_MOCK === "true") {
+    console.log(`[Agent] 🧪 Mock mode enabled. Returning fixture.`);
     return getMockFixture(input);
   }
 
   // 2. Idempotency guard
   if (input.incident_status === "done") {
+    console.log(`[Agent] ⏭️ Incident already resolved. Skipping.`);
     return buildSkipReport(input, "already_resolved");
   }
   if (input.incident_status === "running") {
+    console.log(`[Agent] ⏳ Incident analysis already in progress. Skipping.`);
     return buildSkipReport(input, "execution_in_progress");
   }
 
   try {
     // 3. RCA
+    console.log(`[Agent] 🔍 Step 1/4: Running Root Cause Analysis (RCA)...`);
     const rcaResult = await runRCA(input);
-
-    // If RCA returned a ParseError (handled gracefully), we route it through the decision engine
-    // The decision engine explicitly handles ParseError.
+    
+    if ("kind" in rcaResult && rcaResult.kind === "ParseError") {
+      console.warn(`[Agent] ⚠️ RCA returned a ParseError. LLM output was malformed.`);
+    } else {
+      console.log(`[Agent] ✅ RCA completed. Confidence: ${(rcaResult as AgentOutput).confidence}`);
+    }
 
     // 4. Decide
+    console.log(`[Agent] ⚖️ Step 2/4: Running Decision Engine...`);
     const decision = decide(rcaResult);
+    console.log(`[Agent] 🎯 Decision: ${decision.path} (Action: ${decision.action})`);
+    console.log(`[Agent] 📝 Reason: ${decision.reason}`);
 
     const safeOutput: AgentOutput = "kind" in rcaResult && rcaResult.kind === "ParseError" ? {
       rootCauseSummary: "Failed to parse LLM output",
@@ -143,12 +156,15 @@ export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
     // 5. Verify
     let verification: VerificationResult;
     if (decision.path === "auto_fix") {
+      console.log(`[Agent] 🧪 Step 3/4: Verifying the fix...`);
       verification = await verify({
         event: input.event,
         resource: input.metadata.resource,
-        post_fix_state: input.resource_state // In a real system, we'd fetch the NEW state here. For now, use what we have or assume Person 1 handled state updates if delayed.
+        post_fix_state: input.resource_state
       });
+      console.log(`[Agent] ${verification.resolved ? "✅" : "❌"} Verification ${verification.resolved ? "passed" : "failed"}.`);
     } else {
+      console.log(`[Agent] ⏭️ Step 3/4: Skipping verification (not an auto-fix path).`);
       verification = {
         resolved: null,
         evidence: "Verification skipped because auto_fix was not performed.",
@@ -158,7 +174,10 @@ export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
     }
 
     // 6. Report
-    return await buildReport(safeOutput, decision, verification, input);
+    console.log(`[Agent] 📄 Step 4/4: Building final diagnostic report...`);
+    const report = await buildReport(safeOutput, decision, verification, input);
+    console.log(`[Agent] ✨ Pipeline complete. Report generated.\n`);
+    return report;
 
   } catch (error) {
     console.error("Agent execution failed:", error);

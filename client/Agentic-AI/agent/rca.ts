@@ -27,10 +27,12 @@ export async function runRCA(input: AgentInput): Promise<AgentOutput | ParseErro
   const systemPrompt = buildSystemPrompt();
   
   // Call LLM
-  // (Note: repo_context is already handled by llm-caller formatUserMessage)
+  console.log(`[RCA] 🤖 Calling LLM with system prompt (${systemPrompt.length} chars)...`);
   const rawResponse = await callLLM(input, systemPrompt);
+  console.log(`[RCA] 📥 Received LLM response (${rawResponse.length} chars).`);
   
   // Parse output
+  console.log(`[RCA] 🧩 Parsing LLM response...`);
   const parsed = parseAgentOutput(rawResponse);
   
   if ("kind" in parsed && parsed.kind === "ParseError") {
