@@ -141,8 +141,8 @@ model Incident {
   repositoryId  String
   fingerprint   String
   title         String
-  severity      String          @default("medium") // "low" | "medium" | "high" | "critical"
-  status        String          @default("open")   // "open" | "investigating" | "mitigated" | "resolved" | "ignored"
+  severity      String          // "low" | "medium" | "high" | "critical"
+  status        String          // "open" | "investigating" | "mitigated" | "resolved" | "ignored"
   firstSeenAt   DateTime        @default(now())
   lastSeenAt    DateTime        @default(now())
   eventCount    Int             @default(1)
