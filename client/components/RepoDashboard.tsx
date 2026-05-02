@@ -448,6 +448,8 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
             </div>
           </motion.div>
         </div>
+      )}
+
       {activeTab === "Issues" && (
         <div className="space-y-6">
           <div className="flex items-center justify-between mb-4">
