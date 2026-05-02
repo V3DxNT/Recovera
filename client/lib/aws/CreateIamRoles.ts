@@ -4,7 +4,8 @@ import {
     PutRolePolicyCommand, 
     GetRoleCommand,
     DeleteRoleCommand,
-    DeleteRolePolicyCommand 
+    DeleteRolePolicyCommand,
+    UpdateAssumeRolePolicyCommand 
 } from "@aws-sdk/client-iam";
 import { CloudCredential } from "../../generated/prisma/client";
 import { decrypt } from "../encrypt";
@@ -19,105 +20,160 @@ export async function createFirehoseRoles(credential: CloudCredential, bucketNam
         },
     });
 
-    // 1. Create Role for Firehose
+    // ── 1. Firehose Role ──────────────────────────────────────────────
     const firehoseRoleName = `AutoSRE-FirehoseRole-${accountId}-${region}`;
     let firehoseRoleArn = "";
 
+    const firehoseTrustPolicy = JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [{
+            Effect: "Allow",
+            Principal: { Service: "firehose.amazonaws.com" },
+            Action: "sts:AssumeRole",
+        }],
+    });
+
     try {
-        const createFirehoseRole = new CreateRoleCommand({
+        const firehoseRole = await iam.send(new CreateRoleCommand({
             RoleName: firehoseRoleName,
-            AssumeRolePolicyDocument: JSON.stringify({
-                Version: "2012-10-17",
-                Statement: [{
-                    Effect: "Allow",
-                    Principal: { Service: "firehose.amazonaws.com" },
-                    Action: "sts:AssumeRole",
-                }],
-            }),
-        });
-        const firehoseRole = await iam.send(createFirehoseRole);
-        firehoseRoleArn = firehoseRole.Role!.Arn!;
-
-        // Attach Policy to Firehose Role
-        const firehosePolicy = {
-            Version: "2012-10-17",
-            Statement: [
-                {
-                    Effect: "Allow",
-                    Action: [
-                        "s3:AbortMultipartUpload",
-                        "s3:GetBucketLocation",
-                        "s3:GetObject",
-                        "s3:ListBucket",
-                        "s3:ListBucketMultipartUploads",
-                        "s3:PutObject"
-                    ],
-                    Resource: [
-                        `arn:aws:s3:::${bucketName}`,
-                        `arn:aws:s3:::${bucketName}/*`
-                    ]
-                }
-            ]
-        };
-
-        await iam.send(new PutRolePolicyCommand({
-            RoleName: firehoseRoleName,
-            PolicyName: "AutoSRE-Firehose-S3-Policy",
-            PolicyDocument: JSON.stringify(firehosePolicy),
+            AssumeRolePolicyDocument: firehoseTrustPolicy,
         }));
-
+        firehoseRoleArn = firehoseRole.Role!.Arn!;
+        console.log(`[IAM] Created Firehose role: ${firehoseRoleName}`);
     } catch (error: any) {
         if (error.name === "EntityAlreadyExistsException") {
             const role = await iam.send(new GetRoleCommand({ RoleName: firehoseRoleName }));
             firehoseRoleArn = role.Role!.Arn!;
+            console.log(`[IAM] Firehose role already exists, updating policies...`);
         } else {
             throw error;
         }
     }
 
-    // 2. Create Role for CloudWatch Logs
+    // Always update trust + inline policy (idempotent)
+    try {
+        await iam.send(new UpdateAssumeRolePolicyCommand({
+            RoleName: firehoseRoleName,
+            PolicyDocument: firehoseTrustPolicy,
+        }));
+    } catch (e: any) {
+        if (e.name === "AccessDenied" || e.name === "AccessDeniedException") {
+            console.warn(`[IAM] Warning: User is not authorized to update trust policy for ${firehoseRoleName}. Skipping...`);
+        } else {
+            throw e;
+        }
+    }
+
+    const firehosePolicy = {
+        Version: "2012-10-17",
+        Statement: [
+            {
+                Effect: "Allow",
+                Action: [
+                    "s3:AbortMultipartUpload",
+                    "s3:GetBucketLocation",
+                    "s3:GetObject",
+                    "s3:ListBucket",
+                    "s3:ListBucketMultipartUploads",
+                    "s3:PutObject"
+                ],
+                Resource: [
+                    `arn:aws:s3:::${bucketName}`,
+                    `arn:aws:s3:::${bucketName}/*`
+                ]
+            }
+        ]
+    };
+
+    try {
+        await iam.send(new PutRolePolicyCommand({
+            RoleName: firehoseRoleName,
+            PolicyName: "AutoSRE-Firehose-S3-Policy",
+            PolicyDocument: JSON.stringify(firehosePolicy),
+        }));
+        console.log(`[IAM] Firehose role policies updated.`);
+    } catch (e: any) {
+        if (e.name === "AccessDenied" || e.name === "AccessDeniedException") {
+            console.warn(`[IAM] Warning: User is not authorized to update inline policy for ${firehoseRoleName}. Skipping...`);
+        } else {
+            throw e;
+        }
+    }
+
+    // ── 2. CloudWatch Logs Role ───────────────────────────────────────
     const cwRoleName = `AutoSRE-CloudWatchRole-${accountId}-${region}`;
     let cwRoleArn = "";
 
+    // Use BOTH the regional and global principal so CW Logs can assume
+    // this role regardless of how the service identifies itself.
+    const cwTrustPolicy = JSON.stringify({
+        Version: "2012-10-17",
+        Statement: [{
+            Effect: "Allow",
+            Principal: {
+                Service: [
+                    "logs.amazonaws.com",
+                    `logs.${region}.amazonaws.com`,
+                ],
+            },
+            Action: "sts:AssumeRole",
+        }],
+    });
+
     try {
-        const createCwRole = new CreateRoleCommand({
+        const cwRole = await iam.send(new CreateRoleCommand({
             RoleName: cwRoleName,
-            AssumeRolePolicyDocument: JSON.stringify({
-                Version: "2012-10-17",
-                Statement: [{
-                    Effect: "Allow",
-                    Principal: { Service: `logs.${region}.amazonaws.com` },
-                    Action: "sts:AssumeRole",
-                }],
-            }),
-        });
-        const cwRole = await iam.send(createCwRole);
+            AssumeRolePolicyDocument: cwTrustPolicy,
+        }));
         cwRoleArn = cwRole.Role!.Arn!;
+        console.log(`[IAM] Created CloudWatch role: ${cwRoleName}`);
+    } catch (error: any) {
+        if (error.name === "EntityAlreadyExistsException") {
+            const role = await iam.send(new GetRoleCommand({ RoleName: cwRoleName }));
+            cwRoleArn = role.Role!.Arn!;
+            console.log(`[IAM] CloudWatch role already exists, updating policies...`);
+        } else {
+            throw error;
+        }
+    }
 
-        // Attach Policy to CloudWatch Role (Allows writing to Firehose)
-        const cwPolicy = {
-            Version: "2012-10-17",
-            Statement: [{
-                Effect: "Allow",
-                Action: ["firehose:PutRecord", "firehose:PutRecordBatch"],
-                Resource: [
-                    `arn:aws:firehose:${region}:${accountId}:deliverystream/AutoSRE-LogStream-*`
-                ]
-            }]
-        };
+    // Always update trust + inline policy (idempotent)
+    try {
+        await iam.send(new UpdateAssumeRolePolicyCommand({
+            RoleName: cwRoleName,
+            PolicyDocument: cwTrustPolicy,
+        }));
+    } catch (e: any) {
+        if (e.name === "AccessDenied" || e.name === "AccessDeniedException") {
+            console.warn(`[IAM] Warning: User is not authorized to update trust policy for ${cwRoleName}. Skipping...`);
+        } else {
+            throw e;
+        }
+    }
 
+    const cwPolicy = {
+        Version: "2012-10-17",
+        Statement: [{
+            Effect: "Allow",
+            Action: ["firehose:PutRecord", "firehose:PutRecordBatch"],
+            Resource: [
+                `arn:aws:firehose:${region}:${accountId}:deliverystream/AutoSRE-LogStream-*`
+            ]
+        }]
+    };
+
+    try {
         await iam.send(new PutRolePolicyCommand({
             RoleName: cwRoleName,
             PolicyName: "AutoSRE-CW-Firehose-Policy",
             PolicyDocument: JSON.stringify(cwPolicy),
         }));
-
-    } catch (error: any) {
-        if (error.name === "EntityAlreadyExistsException") {
-            const role = await iam.send(new GetRoleCommand({ RoleName: cwRoleName }));
-            cwRoleArn = role.Role!.Arn!;
+        console.log(`[IAM] CloudWatch role policies updated.`);
+    } catch (e: any) {
+        if (e.name === "AccessDenied" || e.name === "AccessDeniedException") {
+            console.warn(`[IAM] Warning: User is not authorized to update inline policy for ${cwRoleName}. Skipping...`);
         } else {
-            throw error;
+            throw e;
         }
     }
 

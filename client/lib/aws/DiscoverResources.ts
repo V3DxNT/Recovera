@@ -214,6 +214,7 @@ export async function discoverAwsResources(credential: CloudCredential): Promise
     if (!name || claimedLogGroups.has(name)) continue;
 
     // Only include if it's a Lambda (standalone log groups are hidden for auto-connect)
+    const isLambda = name.startsWith("/aws/lambda/");
     if (isLambda) {
       standaloneResources.push({
         type: "lambda",

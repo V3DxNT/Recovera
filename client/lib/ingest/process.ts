@@ -20,26 +20,43 @@ export async function processIngestPayload(params: {
     const recordId = record?.recordId ?? null;
     try {
       const decoded = decodeFirehoseRecordData(record);
+      const parsed = decoded.parsed;
+
+      // Skip CloudWatch Logs Control Messages
+      if (parsed.messageType === "CONTROL_MESSAGE") {
+        continue;
+      }
+
       await persistRawRecord({
         requestId,
         recordId,
         integrationId: params.integrationId,
         receivedAt: new Date().toISOString(),
-        payloadPreview: toPreview(decoded.parsed),
+        payloadPreview: toPreview(parsed),
       });
 
-      const normalized = await normalizeLogEntry({
-        integrationId: params.integrationId,
-        requestId,
-        recordId,
-        logEntry: decoded.parsed,
-        rawText: decoded.rawText,
-        resolveRepo: params.resolveRepo,
-      });
+      // Handle CloudWatch Logs Batched Data (unpack logEvents)
+      const events = Array.isArray(parsed.logEvents) ? parsed.logEvents : [parsed];
 
-      if (seenEventIds.has(normalized.eventId)) continue;
-      seenEventIds.add(normalized.eventId);
-      accepted.push(normalized);
+      for (const event of events) {
+        // Merge envelope info (logGroup, logStream, owner) with the event data
+        const combinedEntry = Array.isArray(parsed.logEvents)
+          ? { ...parsed, ...event, logEvents: undefined }
+          : parsed;
+
+        const normalized = await normalizeLogEntry({
+          integrationId: params.integrationId,
+          requestId,
+          recordId,
+          logEntry: combinedEntry,
+          rawText: typeof event.message === "string" ? event.message : decoded.rawText,
+          resolveRepo: params.resolveRepo,
+        });
+
+        if (seenEventIds.has(normalized.eventId)) continue;
+        seenEventIds.add(normalized.eventId);
+        accepted.push(normalized);
+      }
     } catch (error: unknown) {
       failedIds.push(recordId ?? "unknown");
       const reason = error instanceof Error ? error.message : "Unknown parse error";

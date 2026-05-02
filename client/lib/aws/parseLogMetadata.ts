@@ -46,11 +46,12 @@ export function extractLogMetadata(logEntry: Record<string, unknown>): ParsedLog
     pod_name?: unknown;
     container_image?: unknown;
   };
+  const rawTimestamp = logEntry?.timestamp ?? logEntry?.time;
   const fallbackTimestamp =
-    typeof logEntry?.timestamp === "string"
-      ? logEntry.timestamp
-      : typeof logEntry?.time === "string"
-      ? logEntry.time
+    typeof rawTimestamp === "string"
+      ? rawTimestamp
+      : typeof rawTimestamp === "number"
+      ? new Date(rawTimestamp).toISOString()
       : null;
 
   return {
