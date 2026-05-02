@@ -50,25 +50,23 @@ export async function POST(
       }
     });
 
-    // 2. Fetch user's GitHub Token (mocking for hackathon/MVP unless there's an active token stored)
-    // In production, you'd fetch the user's Account linked to their Session for the access_token
-    // For now, assume it's passed in headers or env if not found in db.
-    let githubToken = process.env.GITHUB_ACCESS_TOKEN || "";
-    
-    // Attempt to get from DB
+    // 2. Fetch the authenticated user's linked GitHub token.
+    // Do not fall back to a shared server token for this endpoint, to avoid
+    // performing PR creation with the wrong account or elevated privileges.
     const userAccount = await prisma.account.findFirst({
       where: { user: { email: session.user.email as string }, provider: "github" }
     });
-    if (userAccount?.access_token) {
-      githubToken = userAccount.access_token;
-    }
+    const githubToken = userAccount?.access_token || "";
 
     if (!githubToken) {
       await prisma.incidentAction.update({
         where: { id: action.id },
-        data: { status: "failed", failureReason: "No GitHub token available." }
+        data: { status: "failed", failureReason: "No linked GitHub account token available." }
       });
-      return NextResponse.json({ error: "No GitHub token available. Please link your GitHub account or set GITHUB_ACCESS_TOKEN." }, { status: 401 });
+      return NextResponse.json(
+        { error: "No linked GitHub account token available. Please link your GitHub account." },
+        { status: 401 }
+      );
     }
 
     // 3. Format PR Body
