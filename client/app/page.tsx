@@ -4,7 +4,6 @@ import DashboardVisual from "@/components/DashboardVisual";
 import PipelineFlow from "@/components/PipelineFlow";
 import FeaturesGrid from "@/components/FeaturesGrid";
 import CodeDiffVisual from "@/components/CodeDiffVisual";
-
 import FinalCTA from "@/components/FinalCTA";
 import Footer from "@/components/Footer";
 
