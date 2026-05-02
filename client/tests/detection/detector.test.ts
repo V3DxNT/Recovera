@@ -1,3 +1,8 @@
+jest.mock("../../lib/encrypt", () => ({
+  encrypt: jest.fn((s: string) => s),
+  decrypt: jest.fn(() => "mockdecryptedvalue"),
+}));
+
 import { processNormalizedEvent, detectEventType } from "../../lib/detection/detector";
 import { runAgent } from "../../Agentic-AI/agent";
 // Mock runAgent
@@ -6,16 +11,14 @@ jest.mock("../../Agentic-AI/agent", () => ({
     return {
       incident_id: input.incident_id,
       summary: "Mock report",
-      rootCauseSummary: "Mocked cause",
-      recommendedAction: "alert_only",
-      failureMechanism: "Crash",
-      likelyFiles: [],
-      likelySubsystem: "Unknown",
+      root_cause: "Mocked cause",
+      action_taken: "alert_only",
+      decision_path: "alert_only",
       verification: {
         resolved: false,
         evidence: "none",
         checked_at: new Date().toISOString(),
-        status: "pending"
+        status: "pending",
       },
       confidence: 0.9,
       risk_score: 0.5,
@@ -27,11 +30,13 @@ jest.mock("../../Agentic-AI/agent", () => ({
         recommendedAction: "alert_only",
         failureMechanism: "Crash",
         likelyFiles: [],
-        likelySubsystem: "Unknown"
+        likelySubsystem: "Unknown",
+        fixStrategy: [],
+        evidence: [],
       },
-      generated_at: new Date().toISOString()
+      generated_at: new Date().toISOString(),
     };
-  })
+  }),
 }));
 
 // Mock Prisma
@@ -45,32 +50,50 @@ jest.mock("../../lib/prisma", () => {
   const mockRepoCreate = jest.fn();
   const mockUserFindFirst = jest.fn();
   const mockIncidentUpdate = jest.fn();
-  const mockTransaction = jest.fn(async (cb) => cb({
-    incidentEvent: { update: mockEventUpdate },
-    detectionAudit: { upsert: mockAuditUpsert },
-    incident: { update: mockIncidentUpdate }
-  }));
+  const mockIncidentActionCreate = jest.fn();
+  const mockIncidentRcaFindFirst = jest.fn();
+  const mockIncidentRcaCreate = jest.fn();
+  const mockInstanceMappingFindFirst = jest.fn();
+
+  mockIncidentRcaFindFirst.mockResolvedValue(null);
+  mockInstanceMappingFindFirst.mockResolvedValue(null);
+
+  const mockTransaction = jest.fn(async (cb) =>
+    cb({
+      incidentEvent: { update: mockEventUpdate },
+      detectionAudit: { upsert: mockAuditUpsert },
+      incident: { update: mockIncidentUpdate },
+      incidentAction: { create: mockIncidentActionCreate },
+      incidentRca: {
+        findFirst: mockIncidentRcaFindFirst,
+        create: mockIncidentRcaCreate,
+      },
+    }),
+  );
 
   return {
     prisma: {
       incidentEvent: {
         findUnique: mockFindUnique,
         upsert: mockEventUpsert,
-        update: mockEventUpdate
+        update: mockEventUpdate,
       },
       incident: {
         upsert: mockIncidentUpsert,
-        update: mockIncidentUpdate
+        update: mockIncidentUpdate,
       },
       repository: {
         findFirst: mockRepoFindFirst,
-        create: mockRepoCreate
+        create: mockRepoCreate,
       },
       user: {
         findFirst: mockUserFindFirst,
-        create: jest.fn()
+        create: jest.fn(),
       },
-      $transaction: mockTransaction
+      instanceMapping: {
+        findFirst: mockInstanceMappingFindFirst,
+      },
+      $transaction: mockTransaction,
     },
     __mocks__: {
       mockFindUnique,
@@ -79,18 +102,29 @@ jest.mock("../../lib/prisma", () => {
       mockRepoFindFirst,
       mockTransaction,
       mockEventUpdate,
-      mockAuditUpsert
-    }
+      mockAuditUpsert,
+      mockInstanceMappingFindFirst,
+    },
   };
 });
 
 const { __mocks__ } = require("../../lib/prisma");
-const { mockFindUnique, mockIncidentUpsert, mockEventUpsert, mockRepoFindFirst, mockTransaction, mockAuditUpsert, mockEventUpdate } = __mocks__;
+const {
+  mockFindUnique,
+  mockIncidentUpsert,
+  mockEventUpsert,
+  mockRepoFindFirst,
+  mockTransaction,
+  mockAuditUpsert,
+  mockEventUpdate,
+  mockInstanceMappingFindFirst,
+} = __mocks__;
 
 
 describe("Detector & Brain Bridge", () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockInstanceMappingFindFirst.mockResolvedValue(null);
   });
 
   test("processNormalizedEvent - new event triggers Incident upsert and runAgent", async () => {
@@ -133,7 +167,7 @@ describe("Detector & Brain Bridge", () => {
     const agentInput = (runAgent as jest.Mock).mock.calls[0][0];
     expect(agentInput.event).toBe("S3_PUBLIC");
     expect(agentInput.incident_id).toBe("inc_123");
-
+    expect((runAgent as jest.Mock).mock.calls[0][1]).toEqual({});
     // Verify transaction ran and Audit was upserted
     expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockAuditUpsert).toHaveBeenCalledTimes(1);

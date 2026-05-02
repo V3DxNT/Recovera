@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { processIngestPayload } from "@/lib/ingest/process";
-import { maybeRecordIngestAlert, recordIngestMetrics } from "@/lib/ingest/metrics";
+import { recordIngestMetrics, maybeRecordIngestAlert } from "@/lib/ingest/metrics";
 
 function extractIntegrationHint(req: Request): {
   firehoseArn: string | null;
@@ -51,6 +51,42 @@ export async function POST(req: Request) {
       processed: result.processed,
       failed: result.failed,
     });
+    if (result.accepted > 0) {
+      for (const event of result.acceptedEvents) {
+        await prisma.detectionQueue.upsert({
+          where: { eventId: event.eventId },
+          create: {
+            eventId: event.eventId,
+            payload: event as any,
+            status: "pending",
+          },
+          update: {
+            status: "pending",
+          },
+        });
+
+        // Feature Flag: Sync vs Async Detection
+        if (process.env.SYNC_DETECTION_MODE === "true") {
+          const { processQueueItem } = await import("@/lib/detection/detector");
+          await processQueueItem(event.eventId).catch((err) => {
+            console.error("[INGEST] Sync detection failed:", err.message);
+          });
+        } else {
+          // Fire async trigger (best-effort, no await)
+          const baseUrl = process.env.NEXTAUTH_URL || `http://${req.headers.get("host")}`;
+          fetch(`${baseUrl}/api/detection/process`, {
+            method: "POST",
+            headers: {
+              "x-recovera-internal": process.env.RECOVERA_INTERNAL_KEY!,
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify({ eventId: event.eventId }),
+          }).catch((err) => {
+            console.warn("[INGEST] Async trigger failed, poller will pick up:", err.message);
+          });
+        }
+      }
+    }
 
     return NextResponse.json(
       {
@@ -63,17 +99,20 @@ export async function POST(req: Request) {
         failedIds: result.failedIds,
         durationMs,
       },
-      { status: 200 }
+      { status: 200 },
     );
   } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : "Failed to process ingest payload";
+    const message =
+      error instanceof Error
+        ? error.message
+        : "Failed to process ingest payload";
     console.error("Ingest logs route failed:", error);
     return NextResponse.json(
       {
         success: false,
         error: message,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }

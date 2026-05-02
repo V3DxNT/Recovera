@@ -75,9 +75,16 @@ export async function POST(req: Request) {
     });
   } catch (error: any) {
     console.error("Credential Validation Error:", error);
+    
+    const status = error.message === "INSUFFICIENT_PERMISSIONS" ? 403 : 
+                   (error.message === "INVALID_SECRET" || error.message === "INVALID_ACCESS_KEY") ? 401 : 500;
+
     return NextResponse.json(
-      { error: "Failed to validate credentials. Please check your access keys and permissions." },
-      { status: 500 }
+      { 
+        error: error.message || "Failed to validate credentials.",
+        code: error.message 
+      },
+      { status }
     );
   }
 }

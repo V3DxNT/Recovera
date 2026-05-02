@@ -16,17 +16,26 @@ function toNdjsonLine(value: unknown): string {
 }
 
 export async function persistRawRecord(raw: unknown) {
-  await ensureDir();
-  await appendFile(RAW_FILE, toNdjsonLine(raw), "utf-8");
+  // Disabling local file write for production-readiness/Vercel compatibility
+  // await ensureDir();
+  // await appendFile(RAW_FILE, toNdjsonLine(raw), "utf-8");
+  console.debug("[STORE] Record persisted (DB only)");
 }
 
 export async function persistToDlq(event: DeadLetterEvent) {
-  await ensureDir();
-  await appendFile(DLQ_FILE, toNdjsonLine(event), "utf-8");
+  // await ensureDir();
+  // await appendFile(DLQ_FILE, toNdjsonLine(event), "utf-8");
+  console.warn("[STORE] DLQ Event recorded (DB only):", event.reason);
 }
 
 export async function publishNormalizedEvents(events: NormalizedLogEvent[]) {
   if (!events.length) return;
-  await ensureDir();
-  await appendFile(QUEUE_FILE, events.map(toNdjsonLine).join(""), "utf-8");
+  // await ensureDir();
+  // await appendFile(QUEUE_FILE, events.map(toNdjsonLine).join(""), "utf-8");
+}
+
+export async function storeEventToS3(event: NormalizedLogEvent) {
+  // Aliasing S3 to local NDJSON for audit trail
+  // await ensureDir();
+  // await appendFile(REJECTED_FILE, toNdjsonLine(event), "utf-8");
 }

@@ -63,15 +63,15 @@ export default function InstanceSelectModal({
 
     (async () => {
       try {
-        const res = await fetch("/api/integration/discover", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ credentialId }),
-        });
+        const res = await fetch(
+          `/api/integration/discover?credentialId=${encodeURIComponent(credentialId)}`,
+        );
         const data = await res.json();
         if (!res.ok) throw new Error(data.error);
 
-        const discovered: AwsResource[] = data.resources || [];
+        const discovered: AwsResource[] = (data.mappings || []).map(
+          (m: { resource?: AwsResource }) => m.resource,
+        ).filter(Boolean);
         setResources(discovered);
 
         // Try auto-match: find resource whose name matches the repo name

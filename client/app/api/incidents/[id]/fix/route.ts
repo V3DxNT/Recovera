@@ -13,21 +13,22 @@ export async function POST(
 ) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
+    const internalKey = process.env.RECOVERA_INTERNAL_KEY;
+    const authHeader = req.headers.get("x-recovera-internal");
+
+    const isAuthorized = (session && session.user) || (internalKey && authHeader === internalKey);
+
+    console.log("[FIX_AUTH] Session:", !!session);
+    console.log("[FIX_AUTH] Internal Key Present:", !!internalKey);
+    console.log("[FIX_AUTH] Auth Header Present:", !!authHeader);
+    console.log("[FIX_AUTH] Authorized:", isAuthorized);
+
+    if (!isAuthorized) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
     const { id } = await params;
-    
-    // In a fully integrated flow, RCA and CodeContext would be fetched from the DB
-    // using the incidentId. Since Step 3 & 4 are not fully implemented, we accept
-    // them from the request body for independent testing.
     const body = await req.json();
-    const { rca, context } = body as { rca: MockRCA, context: MockCodeContext[] };
-
-    if (!rca || !context) {
-      return NextResponse.json({ error: "Missing 'rca' or 'context' in request body." }, { status: 400 });
-    }
 
     // 1. Fetch Incident and Repository metadata from the DB
     const incident = await prisma.incident.findUnique({
@@ -37,6 +38,31 @@ export async function POST(
 
     if (!incident || !incident.repository) {
       return NextResponse.json({ error: "Incident or linked Repository not found." }, { status: 404 });
+    }
+
+    // 2. Fetch latest RCA from DB for self-hydration
+    const latestRcaRecord = await prisma.incidentRca.findFirst({
+      where: { incidentId: id },
+      orderBy: { version: 'desc' },
+    });
+
+    const rcaPayload = latestRcaRecord ? JSON.parse(latestRcaRecord.rcaPayload) : null;
+
+    // Use client-passed RCA/context as override, otherwise hydrate from DB
+    const rca = body.rca ?? (rcaPayload ? {
+      summary: rcaPayload.rootCauseSummary,
+      likelyFiles: rcaPayload.likelyFiles,
+      fixStrategy: rcaPayload.fixStrategy,
+    } : null);
+
+    const context = body.context ?? (rcaPayload ? rcaPayload.likelyFiles.map((f: any) => ({
+      path: f.path,
+      content: "", // Generator will attempt to fetch or simulate based on knowledge
+      reason: f.reason
+    })) : null);
+
+    if (!rca || !context) {
+      return NextResponse.json({ error: "Missing 'rca' or 'context' (not found in DB or request body)." }, { status: 400 });
     }
 
     const mockIncidentInfo = {
@@ -95,7 +121,7 @@ export async function POST(
     // 5. Run Sandbox Validation (Lint/Build check)
     // We pass the user's github access token from session if available, else undefined
     // Note: session.accessToken relies on custom NextAuth callbacks injecting it
-    const githubToken = (session as { accessToken?: string }).accessToken;
+    const githubToken = session ? (session as any).accessToken : undefined;
     
     console.log(`[Fix Generator] Running sandbox validation for ${incident.repository.fullName}...`);
     const sandboxResult = await runSandboxValidation(
@@ -118,7 +144,7 @@ export async function POST(
 
     return NextResponse.json({
       message: sandboxResult.passed ? "Fix generated and validated successfully." : "Fix generated but sandbox validation failed.",
-      patchArtifact,
+      patch: patchArtifact,
     });
 
   } catch (error: unknown) {
