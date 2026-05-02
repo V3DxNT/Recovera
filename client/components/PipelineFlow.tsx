@@ -33,7 +33,7 @@ export default function PipelineFlow() {
   ];
 
   return (
-    <section className="py-24 bg-black relative overflow-hidden border-b border-white/[0.05]">
+    <section id="pipeline" className="py-24 bg-black relative overflow-hidden border-b border-white/[0.05]">
       <div className="container mx-auto px-6 max-w-6xl">
         <div className="mb-16">
           <h2 className="text-3xl lg:text-4xl font-medium tracking-tight text-white">

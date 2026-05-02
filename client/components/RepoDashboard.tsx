@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ArrowLeft, Activity, AlertCircle, CheckCircle2,
   Clock, Server, Shield, Terminal, GitBranch,
@@ -11,13 +12,82 @@ import {
 } from "lucide-react";
 import InstanceSelectModal from "./InstanceSelectModal";
 
+type IntegrationInfo = {
+  id: string;
+  provider: string;
+  s3BucketName: string | null;
+  firehoseArn: string | null;
+  status: string;
+  lastSyncAt: string | null;
+  credentials?: {
+    region: string;
+    label: string | null;
+  } | null;
+};
+
+type RepoMapping = {
+  id: string;
+  repoFullName: string;
+  logGroupName: string;
+  resourceId: string | null;
+  resourceType: string;
+  resourceLabel: string | null;
+  confidence: number;
+  status: string;
+  integration?: IntegrationInfo | null;
+};
+
+type RepoDetails = {
+  id: string;
+  fullName: string;
+  name: string;
+  htmlUrl: string;
+  isPrivate: boolean;
+  defaultBranch: string;
+  mappings?: RepoMapping[];
+};
+
+type IncidentAction = {
+  id: string;
+  actionType: string;
+  status: string;
+  createdAt?: string;
+  prUrl?: string | null;
+  branchName?: string | null;
+  commitSha?: string | null;
+  failureReason?: string | null;
+};
+
+type DeploymentActionView = IncidentAction & {
+  incidentTitle: string;
+};
+
+type IncidentPatch = {
+  id: string;
+  validationStatus: string;
+  validationLogs?: string | null;
+};
+
+type IncidentItem = {
+  id: string;
+  title: string;
+  severity: string;
+  status: string;
+  confidence: number;
+  createdAt: string;
+  patches?: IncidentPatch[];
+  actions?: IncidentAction[];
+};
+
 export default function RepoDashboard({ repoName }: { repoName: string }) {
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("Issues");
   const [showInstanceModal, setShowInstanceModal] = useState(false);
-  const [incidents, setIncidents] = useState<any[]>([]);
-  const [repoData, setRepoData] = useState<any>(null);
+  const [incidents, setIncidents] = useState<IncidentItem[]>([]);
+  const [repoData, setRepoData] = useState<RepoDetails | null>(null);
   const [loadingIncidents, setLoadingIncidents] = useState(true);
   const [generatingFix, setGeneratingFix] = useState<Record<string, boolean>>({});
+  const [deletingRepo, setDeletingRepo] = useState(false);
 
   useEffect(() => {
     fetch(`/api/incidents?repoFullName=${encodeURIComponent(repoName)}`)
@@ -59,7 +129,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
       const res = await fetch(`/api/incidents/${incidentId}/actions/open-pr`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ patchId })
+        body: JSON.stringify({ patchArtifactId: patchId })
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
@@ -99,6 +169,38 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
     }
   };
 
+  const handleDeleteRepository = async () => {
+    const repoIdentifier = repoData?.fullName || repoName;
+    const confirmed = window.confirm(
+      `Delete "${repoIdentifier}" from Recovera database?\n\nThis removes mapped resources and stored incidents for this repository.`
+    );
+    if (!confirmed) return;
+
+    setDeletingRepo(true);
+    try {
+      const res = await fetch("/api/repositories", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          repoFullName: repoData?.fullName,
+          repoName: repoData?.name || repoName,
+        }),
+      });
+      const data = await res.json();
+
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to delete repository");
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch (err) {
+      alert("Failed to delete repository: " + (err as Error).message);
+    } finally {
+      setDeletingRepo(false);
+    }
+  };
+
   // Fetch credentialId from user's stored integration
   const [credentialId, setCredentialId] = useState<string | null>(null);
 
@@ -126,6 +228,21 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
   };
 
   const tabs = ["Overview", "Issues", "Deployments", "Settings"];
+  const repoMappings = repoData?.mappings || [];
+  const integration = repoMappings[0]?.integration || null;
+  const uniqueLogGroups = Array.from(new Set(repoMappings.map((m) => m.logGroupName).filter(Boolean)));
+  const deploymentActions: DeploymentActionView[] = incidents
+    .flatMap((incident) =>
+      (incident.actions || []).map((action) => ({
+        ...action,
+        incidentTitle: incident.title,
+      }))
+    )
+    .sort((a, b) => {
+      const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return bTime - aTime;
+    });
 
   // Compute activity heatmap for last 14 days
   const activityData = Array.from({ length: 14 }).map((_, i) => {
@@ -141,7 +258,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
   const maxIssues = Math.max(1, ...activityData.map(d => d.issues));
 
   // Compute timeline events from real incidents
-  const timelineEvents = incidents.slice(0, 10).map((inc, idx) => ({
+  const timelineEvents = incidents.slice(0, 10).map((inc) => ({
     id: inc.id,
     type: inc.status === "resolved" ? "success" : "issue",
     title: inc.title,
@@ -203,14 +320,22 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
               <Cloud className="w-3.5 h-3.5" />
               Connect Instance
             </button>
-            <button className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium transition-all flex items-center gap-2">
+            <button
+              onClick={() => setActiveTab("Settings")}
+              className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-sm font-medium transition-all flex items-center gap-2"
+            >
               <Settings className="w-4 h-4" />
               Settings
             </button>
-            <button className="px-4 py-2 bg-white text-black hover:bg-zinc-200 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)]">
+            <a
+              href={repoData?.htmlUrl || `https://github.com/${repoName}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-white text-black hover:bg-zinc-200 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
+            >
               <ExternalLink className="w-4 h-4" />
               View Repository
-            </button>
+            </a>
           </div>
         </div>
       </motion.div>
@@ -520,8 +645,8 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                           </div>
                         )}
 
-                        {latestAction && latestAction.status === 'completed' && (
-                          <a href={latestAction.metadata?.prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
+                        {latestAction && latestAction.prUrl && (
+                          <a href={latestAction.prUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
                             <ExternalLink className="w-4 h-4" />
                             View PR
                           </a>
@@ -559,36 +684,68 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-xl font-bold text-white">Recent Deployments & PRs</h2>
           </div>
-          {incidents.filter(i => i.actions && i.actions.length > 0).length === 0 ? (
-            <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-12 text-center text-zinc-500">
-              No automated PRs or deployments found for this repository.
+          <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-6">
+            <h3 className="text-sm font-semibold text-white mb-4">Ingestion Deployment</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">Integration Status</p>
+                <p className="text-white font-medium capitalize">{integration?.status || "not connected"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">Region</p>
+                <p className="text-white font-medium">{integration?.credentials?.region || "N/A"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4 md:col-span-2">
+                <p className="text-zinc-500 mb-1">Firehose Delivery Stream ARN</p>
+                <p className="text-white font-mono text-xs break-all">{integration?.firehoseArn || "Not provisioned"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4 md:col-span-2">
+                <p className="text-zinc-500 mb-1">Connected Log Groups</p>
+                {uniqueLogGroups.length === 0 ? (
+                  <p className="text-zinc-400">No log groups mapped yet.</p>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {uniqueLogGroups.map((group) => (
+                      <span key={group} className="px-2.5 py-1 rounded-md text-xs bg-white/5 border border-white/10 text-zinc-200">
+                        {group}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          ) : (
+          </div>
+
+          {deploymentActions.length > 0 && (
             <div className="space-y-4">
-              {incidents.filter(i => i.actions && i.actions.length > 0).map(incident => {
-                const latestAction = incident.actions[0];
+              {deploymentActions.map((latestAction) => {
                 return (
                   <motion.div
                     initial={{ opacity: 0, y: 10 }}
                     animate={{ opacity: 1, y: 0 }}
-                    key={incident.id + '-deployment'}
+                    key={latestAction.id}
                     className="bg-zinc-900/40 border border-white/5 rounded-xl p-6"
                   >
                     <div className="flex items-start justify-between">
                       <div>
                         <div className="flex items-center gap-3 mb-2">
-                          <h3 className="text-lg font-semibold text-white">Fix for: {incident.title}</h3>
-                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${latestAction.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
-                            {latestAction.type === 'create_pr' ? 'Pull Request' : latestAction.type}
+                          <h3 className="text-lg font-semibold text-white">Fix for: {latestAction.incidentTitle}</h3>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${latestAction.status === 'opened' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
+                            {latestAction.actionType === "open_pr" ? "Pull Request" : latestAction.actionType}
                           </span>
                         </div>
                         <p className="text-sm text-zinc-400 mb-4">
                           Status: {latestAction.status.replace("_", " ")}
                         </p>
+                        {latestAction.createdAt && (
+                          <p className="text-xs text-zinc-500">
+                            Created: {new Date(latestAction.createdAt).toLocaleString()}
+                          </p>
+                        )}
                       </div>
                       <div className="flex flex-col items-end gap-2">
-                        {latestAction.metadata?.prUrl && (
-                          <a href={latestAction.metadata.prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
+                        {latestAction.prUrl && (
+                          <a href={latestAction.prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
                             <ExternalLink className="w-4 h-4" />
                             View PR
                           </a>
@@ -600,6 +757,85 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
               })}
             </div>
           )}
+        </div>
+      )}
+
+      {activeTab === "Settings" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Repository Settings</h2>
+          </div>
+
+          <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-6">
+            <h3 className="text-sm font-semibold text-white mb-4">Infrastructure Connection</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">Cloud Provider</p>
+                <p className="text-white font-medium uppercase">{integration?.provider || "N/A"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">Credential Label</p>
+                <p className="text-white font-medium">{integration?.credentials?.label || "AWS Account"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">S3 Log Bucket</p>
+                <p className="text-white font-mono text-xs break-all">{integration?.s3BucketName || "Not provisioned"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">Firehose ARN</p>
+                <p className="text-white font-mono text-xs break-all">{integration?.firehoseArn || "Not provisioned"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">Region</p>
+                <p className="text-white font-medium">{integration?.credentials?.region || "N/A"}</p>
+              </div>
+              <div className="bg-black/40 border border-white/10 rounded-lg p-4">
+                <p className="text-zinc-500 mb-1">Last Sync</p>
+                <p className="text-white font-medium">
+                  {integration?.lastSyncAt ? new Date(integration.lastSyncAt).toLocaleString() : "Never"}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-6">
+            <h3 className="text-sm font-semibold text-white mb-4">Mapped Resources</h3>
+            {repoMappings.length === 0 ? (
+              <div className="bg-black/40 border border-white/10 rounded-lg p-5 text-zinc-400">
+                No mapped resources for this repository yet.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {repoMappings.map((mapping) => (
+                  <div key={mapping.id} className="bg-black/40 border border-white/10 rounded-lg p-4">
+                    <div className="flex flex-wrap items-center gap-2 mb-2">
+                      <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border border-white/20 bg-white/10 text-white">
+                        {mapping.resourceType}
+                      </span>
+                      <span className="text-xs text-zinc-400">Status: {mapping.status}</span>
+                    </div>
+                    <p className="text-sm text-white font-medium">{mapping.resourceLabel || mapping.resourceId || "Unnamed Resource"}</p>
+                    <p className="text-xs text-zinc-400 mt-1">Resource ID: {mapping.resourceId || "N/A"}</p>
+                    <p className="text-xs text-zinc-400">Log Group: {mapping.logGroupName || "N/A"}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="bg-red-950/30 border border-red-500/20 rounded-xl p-6">
+            <h3 className="text-sm font-semibold text-red-300 mb-2">Danger Zone</h3>
+            <p className="text-sm text-zinc-300 mb-4">
+              Remove this repository from Recovera database, including associated mappings and incidents.
+            </p>
+            <button
+              onClick={handleDeleteRepository}
+              disabled={deletingRepo}
+              className="px-4 py-2 rounded-lg text-sm font-medium border border-red-500/40 text-red-200 hover:bg-red-500/10 disabled:opacity-60 transition-all"
+            >
+              {deletingRepo ? "Deleting..." : "Delete Repository"}
+            </button>
+          </div>
         </div>
       )}
       {/* Instance Select Modal */}
