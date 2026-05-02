@@ -10,7 +10,8 @@
     "test:ingest": "node --import tsx --test tests/ingest/*.test.ts",
     "test:replay": "node --import tsx tests/ai/replaySuite.ts",
     "test:pr-creator": "node --import tsx tests/ai/prCreatorSuite.ts",
-    "test:safety": "node --import tsx tests/safety/policySuite.ts"
+    "test:safety": "node --import tsx tests/safety/policySuite.ts",
+    "test:e2e": "node --import tsx tests/e2e/full-pipeline.test.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^3.0.67",

@@ -1,19 +1,101 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import Link from "next/link";
 import { 
   ArrowLeft, Activity, AlertCircle, CheckCircle2, 
   Clock, Server, Shield, Terminal, GitBranch, 
   Settings, ExternalLink, BarChart3, Search, 
-  MoreHorizontal, Play, CheckCircle, Cloud
+  MoreHorizontal, Play, CheckCircle, Cloud, Zap, Loader2
 } from "lucide-react";
 import InstanceSelectModal from "./InstanceSelectModal";
 
 export default function RepoDashboard({ repoName }: { repoName: string }) {
-  const [activeTab, setActiveTab] = useState("Overview");
+  const [activeTab, setActiveTab] = useState("Issues");
   const [showInstanceModal, setShowInstanceModal] = useState(false);
+  const [incidents, setIncidents] = useState<any[]>([]);
+  const [loadingIncidents, setLoadingIncidents] = useState(true);
+  const [generatingFix, setGeneratingFix] = useState<Record<string, boolean>>({});
+
+  useEffect(() => {
+    fetch(`/api/incidents?repoFullName=${encodeURIComponent(repoName)}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data.incidents) setIncidents(data.incidents);
+        setLoadingIncidents(false);
+      })
+      .catch(err => {
+        console.error("Failed to fetch incidents:", err);
+        setLoadingIncidents(false);
+      });
+  }, [repoName]);
+
+  const handleGenerateFix = async (incidentId: string) => {
+    setGeneratingFix(prev => ({ ...prev, [incidentId]: true }));
+    try {
+      const res = await fetch(`/api/incidents/${incidentId}/fix`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      
+      // Update local state
+      setIncidents(prev => prev.map(inc => 
+        inc.id === incidentId 
+          ? { ...inc, patches: [data.patch, ...(inc.patches || [])] }
+          : inc
+      ));
+    } catch (err) {
+      alert("Failed to generate fix: " + (err as Error).message);
+    } finally {
+      setGeneratingFix(prev => ({ ...prev, [incidentId]: false }));
+    }
+  };
+
+  const handleOpenPR = async (incidentId: string, patchId: string) => {
+    setGeneratingFix(prev => ({ ...prev, [incidentId]: true }));
+    try {
+      const res = await fetch(`/api/incidents/${incidentId}/actions/open-pr`, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ patchId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      
+      // Update local state
+      setIncidents(prev => prev.map(inc => 
+        inc.id === incidentId 
+          ? { ...inc, actions: [data.action, ...(inc.actions || [])] }
+          : inc
+      ));
+    } catch (err) {
+      alert("Failed to open PR: " + (err as Error).message);
+    } finally {
+      setGeneratingFix(prev => ({ ...prev, [incidentId]: false }));
+    }
+  };
+
+  const handleApprove = async (incidentId: string, actionId: string) => {
+    setGeneratingFix(prev => ({ ...prev, [incidentId]: true }));
+    try {
+      const res = await fetch(`/api/incidents/${incidentId}/safety/approve`, { 
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ actionId })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed");
+      
+      // Refresh incidents to get new state
+      const freshRes = await fetch(`/api/incidents?repoFullName=${encodeURIComponent(repoName)}`);
+      const freshData = await freshRes.json();
+      if (freshData.incidents) setIncidents(freshData.incidents);
+    } catch (err) {
+      alert("Failed to approve action: " + (err as Error).message);
+    } finally {
+      setGeneratingFix(prev => ({ ...prev, [incidentId]: false }));
+    }
+  };
 
   // TODO: Replace with real credentialId from user's stored integration
   const credentialId = null; // Will be fetched from DB when AWS is connected
@@ -365,6 +447,122 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
               ))}
             </div>
           </motion.div>
+        </div>
+      {activeTab === "Issues" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Active Incidents</h2>
+          </div>
+          {loadingIncidents ? (
+            <div className="flex justify-center py-12">
+              <Loader2 className="w-8 h-8 animate-spin text-zinc-500" />
+            </div>
+          ) : incidents.length === 0 ? (
+            <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-12 text-center text-zinc-500">
+              No incidents found for this repository.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {incidents.map((incident) => {
+                const latestPatch = incident.patches?.[0];
+                const latestAction = incident.actions?.[0];
+                const isWorking = generatingFix[incident.id];
+                
+                return (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={incident.id} 
+                    className="bg-zinc-900/40 border border-white/5 rounded-xl p-6"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-lg font-semibold text-white">{incident.title}</h3>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${
+                            incident.status === 'resolved' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 
+                            'bg-amber-500/10 text-amber-400 border-amber-500/20'
+                          }`}>
+                            {incident.status}
+                          </span>
+                        </div>
+                        <p className="text-sm text-zinc-400 mb-4">
+                          Confidence Score: {(incident.confidence * 100).toFixed(0)}%
+                        </p>
+                      </div>
+                      
+                      <div className="flex flex-col items-end gap-2">
+                        {/* AutoSRE Actions */}
+                        {!latestPatch && incident.status !== 'resolved' && (
+                          <button
+                            onClick={() => handleGenerateFix(incident.id)}
+                            disabled={isWorking}
+                            className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-all"
+                          >
+                            {isWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                            Generate Fix
+                          </button>
+                        )}
+                        
+                        {latestPatch && latestPatch.validationStatus === 'passed' && !latestAction && (
+                          <button
+                            onClick={() => handleOpenPR(incident.id, latestPatch.id)}
+                            disabled={isWorking}
+                            className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium rounded-lg disabled:opacity-50 transition-all"
+                          >
+                            {isWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : <GitBranch className="w-4 h-4" />}
+                            Open PR
+                          </button>
+                        )}
+                        
+                        {latestAction && latestAction.status === 'pending_approval' && (
+                          <div className="flex flex-col items-end gap-2">
+                            <span className="text-xs text-amber-400 border border-amber-500/20 bg-amber-500/10 px-2 py-1 rounded">
+                              Blocked: Requires Human Approval
+                            </span>
+                            <button
+                              onClick={() => handleApprove(incident.id, latestAction.id)}
+                              disabled={isWorking}
+                              className="flex items-center gap-2 px-4 py-2 bg-white text-black hover:bg-zinc-200 text-sm font-medium rounded-lg disabled:opacity-50 transition-all"
+                            >
+                              {isWorking ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
+                              Approve & Continue
+                            </button>
+                          </div>
+                        )}
+                        
+                        {latestAction && latestAction.status === 'completed' && (
+                          <a href={latestAction.metadata?.prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
+                            <ExternalLink className="w-4 h-4" />
+                            View PR
+                          </a>
+                        )}
+                      </div>
+                    </div>
+                    
+                    {/* Details if patch generated */}
+                    {latestPatch && (
+                      <div className="mt-4 p-4 bg-black/40 border border-white/5 rounded-lg text-sm">
+                        <div className="flex items-center justify-between mb-2">
+                          <span className="text-zinc-400">Patch Status:</span>
+                          <span className={`${
+                            latestPatch.validationStatus === 'passed' ? 'text-emerald-400' : 'text-red-400'
+                          }`}>
+                            {latestPatch.validationStatus.toUpperCase()}
+                          </span>
+                        </div>
+                        {latestPatch.validationLogs && (
+                          <pre className="text-xs text-zinc-500 whitespace-pre-wrap max-h-32 overflow-y-auto mt-2">
+                            {latestPatch.validationLogs}
+                          </pre>
+                        )}
+                      </div>
+                    )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
         </div>
       )}
       {/* Instance Select Modal */}

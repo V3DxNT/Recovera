@@ -49,8 +49,10 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
     return;
   }
 
+  const defaultFullName = log.repoFullName || "unknown/repo";
+
   let repo = await prisma.repository.findFirst({
-    where: { fullName: log.repoFullName || "" }
+    where: { fullName: defaultFullName }
   });
 
   if (!repo) {
@@ -59,9 +61,9 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
     repo = await prisma.repository.create({
       data: {
         userId: user.id,
-        fullName: log.repoFullName || "unknown/repo",
-        name: (log.repoFullName || "unknown/repo").split("/").pop() || "repo",
-        htmlUrl: `https://github.com/${log.repoFullName || "unknown/repo"}`
+        fullName: defaultFullName,
+        name: defaultFullName.split("/").pop() || "repo",
+        htmlUrl: `https://github.com/${defaultFullName}`
       }
     });
   }
