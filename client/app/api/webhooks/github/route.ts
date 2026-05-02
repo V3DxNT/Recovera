@@ -7,10 +7,15 @@ const WEBHOOK_SECRET = process.env.GITHUB_WEBHOOK_SECRET || "";
 
 function verifySignature(payload: string, signature: string | null) {
   if (!WEBHOOK_SECRET || !signature) return false;
-  
+
   const hmac = crypto.createHmac("sha256", WEBHOOK_SECRET);
   const digest = "sha256=" + hmac.update(payload).digest("hex");
-  return crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(digest));
+  const signatureBuffer = Buffer.from(signature);
+  const digestBuffer = Buffer.from(digest);
+
+  if (signatureBuffer.length !== digestBuffer.length) return false;
+
+  return crypto.timingSafeEqual(signatureBuffer, digestBuffer);
 }
 
 export async function POST(req: NextRequest) {
