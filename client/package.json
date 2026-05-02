@@ -24,6 +24,7 @@
     "@aws-sdk/client-firehose": "^3.1037.0",
     "@aws-sdk/client-iam": "^3.1037.0",
     "@aws-sdk/client-s3": "^3.1037.0",
+    "@aws-sdk/client-ssm": "^3.1041.0",
     "@aws-sdk/client-sts": "^3.1037.0",
     "@next-auth/prisma-adapter": "^1.0.7",
     "@octokit/rest": "^22.0.1",

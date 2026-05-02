@@ -7,6 +7,7 @@ import { createFirehoseRoles, deleteFirehoseRoles } from "@/lib/aws/CreateIamRol
 import { createDeliveryStream, deleteDeliveryStream } from "@/lib/aws/CreateFirehose";
 import { subscribeLogGroups, removeSubscriptionFilters } from "@/lib/aws/CreateCloudWatch";
 import { validateCredentials } from "@/lib/aws/ValidateCredentials";
+import { automateEC2Logging } from "@/lib/aws/AutomateEC2Logging";
 
 interface MappingInput {
   repoFullName: string;   // "user/payment-api"
@@ -60,6 +61,7 @@ export async function POST(req: Request) {
     { step: "iam", label: "Create IAM Roles", status: "pending" },
     { step: "firehose", label: "Create Firehose Delivery Stream", status: "pending" },
     { step: "cloudwatch", label: "Subscribe CloudWatch Log Groups", status: "pending" },
+    { step: "ec2_agent", label: "Prepare EC2 IAM Permissions", status: "pending" },
     { step: "db", label: "Save Integration & Mappings", status: "pending" },
   ];
 
@@ -99,7 +101,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
     credentialId = body.credentialId;
-    const mappings = body.mappings as MappingInput[];
+    const mappings = body.mappings as (MappingInput & { ownerId?: string })[];
 
     if (!credentialId || !mappings?.length) {
       return NextResponse.json(
@@ -129,6 +131,20 @@ export async function POST(req: Request) {
     // 1. Validate credentials
     try {
       identity = await validateCredentials(credential);
+      
+      // Safety Check: Verify that mapped resources belong to this account
+      const mismatch = mappings.find(m => m.ownerId && m.ownerId !== identity.accountId);
+      if (mismatch) {
+        markStep(
+          "validate",
+          "failed",
+          undefined,
+          `Account Mismatch: Resource ${mismatch.resourceId} belongs to account ${mismatch.ownerId}, but your credentials are for account ${identity.accountId}.`,
+          "Please log in to the AWS account that owns your EC2 instances."
+        );
+        throw new Error("Account mismatch detected");
+      }
+
       markStep("validate", "success", identity.accountId);
     } catch (err: any) {
       markStep(
@@ -330,6 +346,30 @@ export async function POST(req: Request) {
           resourceLabel: mapping.resourceLabel,
         },
       });
+
+      // 7.3 Automate EC2 Logging if applicable
+      if (mapping.resourceType === "ec2" && mapping.resourceId) {
+        try {
+          markStep("ec2_agent", "pending", `Configuring ${mapping.resourceId}...`);
+          await automateEC2Logging(credential, mapping.resourceId, mapping.logGroupName, region, identity.accountId);
+          markStep("ec2_agent", "success", `Configured ${mapping.resourceId}`);
+        } catch (err: any) {
+          console.error(`[AWS] Automation failed for ${mapping.resourceId}:`, err.message);
+          markStep(
+            "ec2_agent",
+            "failed",
+            mapping.resourceId,
+            err.message,
+            "Ensure the instance is online, has SSM agent installed, and your IAM credentials have 'ssm:SendCommand' permissions."
+          );
+          // We don't throw here to allow other mappings to succeed, 
+          // but we mark the step as failed so the user knows.
+        }
+      }
+    }
+
+    if (steps.find(s => s.step === "ec2_agent")?.status === "pending") {
+      markStep("ec2_agent", "success", "No EC2 instances to configure");
     }
 
     return NextResponse.json({

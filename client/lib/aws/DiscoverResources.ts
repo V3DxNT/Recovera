@@ -17,6 +17,7 @@ export interface AwsResource {
   logGroups: string[]; // associated CloudWatch log groups
   region: string;
   cluster?: string;    // EKS/ECS cluster name if applicable
+  ownerId?: string;    // AWS Account ID
 }
 
 function getCredentials(credential: CloudCredential) {
@@ -30,6 +31,7 @@ function getCredentials(credential: CloudCredential) {
  * Discover EC2 instances (running only) with their Name tags.
  */
 async function discoverEC2(credential: CloudCredential, region: string): Promise<AwsResource[]> {
+  console.log(`[AWS-EC2] Discovering instances in ${region}...`);
   const ec2 = new EC2Client({ region, credentials: getCredentials(credential) });
   const resources: AwsResource[] = [];
 
@@ -45,8 +47,9 @@ async function discoverEC2(credential: CloudCredential, region: string): Promise
           type: "ec2",
           id: instance.InstanceId || "unknown",
           name: nameTag || instance.InstanceId || "Unnamed Instance",
-          logGroups: [], // Will be matched with CW log groups later
+          logGroups: [`/recovera/ec2/${instance.InstanceId}`],
           region,
+          ownerId: reservation.OwnerId,
         });
       }
     }
@@ -61,34 +64,43 @@ async function discoverEC2(credential: CloudCredential, region: string): Promise
  * Discover ECS services across all clusters.
  */
 async function discoverECS(credential: CloudCredential, region: string): Promise<AwsResource[]> {
+  console.log(`[AWS-ECS] Discovering clusters in ${region}...`);
   const ecs = new ECSClient({ region, credentials: getCredentials(credential) });
   const resources: AwsResource[] = [];
 
   try {
     const clusters = await ecs.send(new ListClustersCommand({}));
-    for (const clusterArn of clusters.clusterArns || []) {
+    const clusterResults = await Promise.all((clusters.clusterArns || []).map(async (clusterArn) => {
       const clusterName = clusterArn.split("/").pop() || clusterArn;
+      const clusterResources: AwsResource[] = [];
 
-      const services = await ecs.send(new ListServicesCommand({ cluster: clusterArn }));
-      if (!services.serviceArns?.length) continue;
+      try {
+        const services = await ecs.send(new ListServicesCommand({ cluster: clusterArn }));
+        if (!services.serviceArns?.length) return [];
 
-      const described = await ecs.send(new DescribeServicesCommand({
-        cluster: clusterArn,
-        services: services.serviceArns,
-      }));
+        const described = await ecs.send(new DescribeServicesCommand({
+          cluster: clusterArn,
+          services: services.serviceArns,
+        }));
 
-      for (const svc of described.services || []) {
-        const svcName = svc.serviceName || "unknown-service";
-        resources.push({
-          type: "ecs",
-          id: svc.serviceArn || svcName,
-          name: svcName,
-          logGroups: [`/ecs/${svcName}`],
-          region,
-          cluster: clusterName,
-        });
+        for (const svc of described.services || []) {
+          const svcName = svc.serviceName || "unknown-service";
+          clusterResources.push({
+            type: "ecs",
+            id: svc.serviceArn || svcName,
+            name: svcName,
+            logGroups: [`/ecs/${svcName}`],
+            region,
+            cluster: clusterName,
+          });
+        }
+      } catch (e) {
+        console.warn(`Failed to discover ECS services for cluster ${clusterName}:`, e);
       }
-    }
+      return clusterResources;
+    }));
+
+    resources.push(...clusterResults.flat());
   } catch (error) {
     console.warn("ECS discovery failed (permission may be missing):", error);
   }
@@ -101,6 +113,7 @@ async function discoverECS(credential: CloudCredential, region: string): Promise
  * Each ECR image roughly corresponds to a deployable service.
  */
 async function discoverEKS(credential: CloudCredential, region: string): Promise<AwsResource[]> {
+  console.log(`[AWS-EKS] Discovering clusters and repositories in ${region}...`);
   const eks = new EKSClient({ region, credentials: getCredentials(credential) });
   const ecr = new ECRClient({ region, credentials: getCredentials(credential) });
   const resources: AwsResource[] = [];
@@ -111,13 +124,14 @@ async function discoverEKS(credential: CloudCredential, region: string): Promise
 
     // Get ECR repositories — each image maps to a service running on EKS
     const ecrRepos = await ecr.send(new DescribeRepositoriesCommand({}));
+    const repositories = ecrRepos.repositories || [];
 
-    for (const clusterName of clusterNames) {
+    await Promise.all(clusterNames.map(async (clusterName) => {
       // The main EKS container log group
       const eksLogGroup = `/aws/eks/${clusterName}/containers`;
 
       // Each ECR repo is a service that can be mapped to a GitHub repo
-      for (const repo of ecrRepos.repositories || []) {
+      for (const repo of repositories) {
         const imageName = repo.repositoryName || "unknown";
         resources.push({
           type: "eks",
@@ -130,7 +144,7 @@ async function discoverEKS(credential: CloudCredential, region: string): Promise
       }
 
       // If no ECR repos, still show the cluster as a single resource
-      if (!ecrRepos.repositories?.length) {
+      if (repositories.length === 0) {
         resources.push({
           type: "eks",
           id: clusterName,
@@ -140,7 +154,7 @@ async function discoverEKS(credential: CloudCredential, region: string): Promise
           cluster: clusterName,
         });
       }
-    }
+    }));
   } catch (error) {
     console.warn("EKS/ECR discovery failed (permission may be missing):", error);
   }
@@ -152,6 +166,7 @@ async function discoverEKS(credential: CloudCredential, region: string): Promise
  * Discover all CloudWatch Log Groups (catches Lambda, custom apps, etc.)
  */
 async function discoverLogGroups(credential: CloudCredential, region: string): Promise<LogGroup[]> {
+  console.log(`[AWS-CW] Fetching CloudWatch log groups in ${region}...`);
   const cwLogs = new CloudWatchLogsClient({ region, credentials: getCredentials(credential) });
   const allGroups: LogGroup[] = [];
   let nextToken: string | undefined;
@@ -184,6 +199,8 @@ export async function discoverAwsResources(credential: CloudCredential): Promise
     discoverLogGroups(credential, region),
   ]);
 
+  console.log(`[AWS] Parallel discovery finished. EC2: ${ec2Resources.length}, ECS: ${ecsResources.length}, EKS: ${eksResources.length}, CW Logs: ${allLogGroups.length}`);
+
   // Collect all log group names claimed by discovered services
   const claimedLogGroups = new Set<string>();
   for (const r of [...ec2Resources, ...ecsResources, ...eksResources]) {
@@ -196,15 +213,16 @@ export async function discoverAwsResources(credential: CloudCredential): Promise
     const name = group.logGroupName;
     if (!name || claimedLogGroups.has(name)) continue;
 
-    // Categorize Lambda log groups
-    const isLambda = name.startsWith("/aws/lambda/");
-    standaloneResources.push({
-      type: isLambda ? "lambda" : "log_group",
-      id: name,
-      name: isLambda ? name.replace("/aws/lambda/", "") : name,
-      logGroups: [name],
-      region,
-    });
+    // Only include if it's a Lambda (standalone log groups are hidden for auto-connect)
+    if (isLambda) {
+      standaloneResources.push({
+        type: "lambda",
+        id: name,
+        name: name.replace("/aws/lambda/", ""),
+        logGroups: [name],
+        region,
+      });
+    }
   }
 
   return [...ec2Resources, ...ecsResources, ...eksResources, ...standaloneResources];

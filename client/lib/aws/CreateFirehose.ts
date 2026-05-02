@@ -44,8 +44,8 @@ export async function createDeliveryStream(
                         Prefix: "firehose-raw/",
                         ErrorOutputPrefix: "firehose-errors/",
                         BufferingHints: {
-                            SizeInMBs: 5,
-                            IntervalInSeconds: 300,
+                            SizeInMBs: 1,
+                            IntervalInSeconds: 60,
                         },
                     },
                     RoleARN: firehoseRoleArn,

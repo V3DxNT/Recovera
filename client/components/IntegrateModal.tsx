@@ -60,11 +60,32 @@ const REQUIRED_POLICY = JSON.stringify({
         "iam:PutRolePolicy",
         "iam:DeleteRolePolicy",
         "iam:GetRole",
-        "iam:PassRole"
+        "iam:PassRole",
+        "iam:CreateInstanceProfile",
+        "iam:GetInstanceProfile",
+        "iam:DeleteInstanceProfile",
+        "iam:AddRoleToInstanceProfile",
+        "iam:RemoveRoleFromInstanceProfile",
+        "iam:AttachRolePolicy",
+        "iam:DetachRolePolicy"
       ],
       Resource: [
-        "arn:aws:iam::*:role/AutoSRE-*"
+        "arn:aws:iam::*:role/AutoSRE-*",
+        "arn:aws:iam::*:role/Recovera-*",
+        "arn:aws:iam::*:instance-profile/Recovera-*"
       ]
+    },
+    {
+      Sid: "RecoveraEC2Automation",
+      Effect: "Allow",
+      Action: [
+        "ec2:AssociateIamInstanceProfile",
+        "ec2:DescribeIamInstanceProfileAssociations",
+        "ssm:SendCommand",
+        "ssm:GetCommandInvocation",
+        "ssm:ListCommandInvocations"
+      ],
+      Resource: "*"
     }
   ]
 }, null, 2);

@@ -36,24 +36,35 @@ export async function GET(req: Request) {
     });
 
     const githubAccount = user?.accounts.find(a => a.provider === "github");
-    let githubRepos: string[] = [];
 
-    if (githubAccount?.access_token) {
-      try {
-        const res = await fetch("https://api.github.com/user/repos?per_page=100", {
-          headers: { Authorization: `Bearer ${githubAccount.access_token}` },
-        });
-        if (res.ok) {
-          const data = await res.json();
-          githubRepos = data.map((r: any) => r.full_name);
+    // 2 & 3. Run GitHub fetch and AWS discovery in parallel
+    console.log("[Discover] Starting parallel discovery for user:", session.user.email);
+    const startTime = Date.now();
+
+    const [githubRepos, resources] = await Promise.all([
+      (async () => {
+        console.log("[Discover] Fetching GitHub repositories...");
+        let repos: string[] = [];
+        if (githubAccount?.access_token) {
+          try {
+            const res = await fetch("https://api.github.com/user/repos?per_page=100", {
+              headers: { Authorization: `Bearer ${githubAccount.access_token}` },
+            });
+            if (res.ok) {
+              const data = await res.json();
+              repos = data.map((r: any) => r.full_name);
+            }
+          } catch (e) {
+            console.error("Failed to fetch GitHub repos:", e);
+          }
         }
-      } catch (e) {
-        console.error("Failed to fetch GitHub repos:", e);
-      }
-    }
+        return repos;
+      })(),
+      discoverAwsResources(credential)
+    ]);
 
-    // 3. Discover AWS Resources
-    const resources = await discoverAwsResources(credential);
+    const duration = Date.now() - startTime;
+    console.log(`[Discover] Completed discovery in ${duration}ms. Found ${resources.length} AWS resources and ${githubRepos.length} GitHub repos.`);
 
     // 4. Match them
     const suggestedMappings = matchResourcesToRepos(resources, githubRepos);
