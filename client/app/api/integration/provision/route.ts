@@ -336,7 +336,7 @@ export async function POST(req: Request) {
       success: true,
       integrationId: integration.id,
       bucketName,
-      subscribedGroups,
+      subscribedLogGroups: uniqueLogGroups,
       mappingCount: mappings.length,
     });
   } catch (error: any) {
