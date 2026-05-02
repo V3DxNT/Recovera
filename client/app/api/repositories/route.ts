@@ -82,8 +82,22 @@ export async function DELETE(req: Request) {
       return { deletedMappings: deletedMappings.count, deletedRepository };
     });
 
+    if (result.deletedRepository === 0 && result.deletedMappings === 0) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Repository not found",
+          repoIdentifier,
+          deletedRepository: result.deletedRepository,
+          deletedMappings: result.deletedMappings,
+        },
+        { status: 404 }
+      );
+    }
+
     return NextResponse.json({
       success: true,
+      repoIdentifier,
       deletedRepository: result.deletedRepository,
       deletedMappings: result.deletedMappings,
     });
