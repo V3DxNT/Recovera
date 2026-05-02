@@ -15,6 +15,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
   const [activeTab, setActiveTab] = useState("Issues");
   const [showInstanceModal, setShowInstanceModal] = useState(false);
   const [incidents, setIncidents] = useState<any[]>([]);
+  const [repoData, setRepoData] = useState<any>(null);
   const [loadingIncidents, setLoadingIncidents] = useState(true);
   const [generatingFix, setGeneratingFix] = useState<Record<string, boolean>>({});
 
@@ -23,6 +24,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
       .then(res => res.json())
       .then(data => {
         if (data.incidents) setIncidents(data.incidents);
+        if (data.repository) setRepoData(data.repository);
         setLoadingIncidents(false);
       })
       .catch(err => {
@@ -110,70 +112,45 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
       })
       .catch(err => console.error("Failed to fetch credential:", err));
   }, []);
-  // Mock data for the timeline and issues
+  // Compute real-time metrics
+  const totalIssues = incidents.length;
+  const openIssues = incidents.filter(i => i.status !== "resolved" && i.status !== "ignored").length;
+  const healthScore = Math.max(0, 100 - openIssues * 5);
+  
   const metrics = {
-    uptime: "99.98%",
-    totalIssues: 124,
-    openIssues: 3,
+    uptime: "99.98%", // Remains static as we don't track real uptime
+    totalIssues,
+    openIssues,
     avgResolution: "45m",
-    healthScore: 98
+    healthScore
   };
 
   const tabs = ["Overview", "Issues", "Deployments", "Settings"];
 
-  // Activity heatmap data (mocked issues over time for last 14 days)
-  const activityData = [
-    { day: "14d", issues: 0 }, { day: "13d", issues: 2 }, { day: "12d", issues: 1 },
-    { day: "11d", issues: 0 }, { day: "10d", issues: 5 }, { day: "9d", issues: 0 },
-    { day: "8d", issues: 1 }, { day: "7d", issues: 0 }, { day: "6d", issues: 0 },
-    { day: "5d", issues: 3 }, { day: "4d", issues: 2 }, { day: "3d", issues: 0 },
-    { day: "2d", issues: 8 }, { day: "1d", issues: 1 }
-  ];
+  // Compute activity heatmap for last 14 days
+  const activityData = Array.from({ length: 14 }).map((_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (13 - i));
+    const count = incidents.filter(inc => {
+      const incDate = new Date(inc.createdAt);
+      return incDate.getDate() === d.getDate() && incDate.getMonth() === d.getMonth() && incDate.getFullYear() === d.getFullYear();
+    }).length;
+    return { day: `${14 - i}d`, issues: count };
+  });
 
-  const maxIssues = Math.max(...activityData.map(d => d.issues));
+  const maxIssues = Math.max(1, ...activityData.map(d => d.issues));
 
-  const timelineEvents = [
-    {
-      id: 1,
-      type: "issue",
-      title: "API Latency Spike in /users endpoint",
-      description: "P99 latency exceeded 500ms for 3 consecutive polling intervals.",
-      time: "2 hours ago",
-      status: "Investigating",
-      duration: "Ongoing",
-      assignee: "Alex"
-    },
-    {
-      id: 2,
-      type: "alert",
-      title: "Memory usage exceeded 85% on worker-node-2",
-      description: "Automated scaling policy triggered. Added 2 additional worker nodes.",
-      time: "5 hours ago",
-      status: "Resolved",
-      duration: "No downtime",
-      assignee: "AutoSRE"
-    },
-    {
-      id: 3,
-      type: "success",
-      title: "Production Deployment v1.4.2",
-      description: "Merge pull request #142 from feature/auth-updates",
-      time: "Yesterday, 14:30",
-      status: "Success",
-      duration: "N/A",
-      assignee: "Sarah"
-    },
-    {
-      id: 4,
-      type: "issue",
-      title: "Database connection pool exhausted",
-      description: "Max connections reached due to unclosed zombie processes.",
-      time: "2 days ago",
-      status: "Resolved",
-      duration: "2m downtime",
-      assignee: "DevOps"
-    }
-  ];
+  // Compute timeline events from real incidents
+  const timelineEvents = incidents.slice(0, 10).map((inc, idx) => ({
+    id: inc.id,
+    type: inc.status === "resolved" ? "success" : "issue",
+    title: inc.title,
+    description: `Severity: ${inc.severity.toUpperCase()}. ${inc.status === "resolved" ? "Incident resolved." : "Currently investigating."}`,
+    time: new Date(inc.createdAt).toLocaleString(),
+    status: inc.status === "resolved" ? "Resolved" : "Investigating",
+    duration: inc.status === "resolved" ? "Resolved" : "Ongoing",
+    assignee: "AutoSRE"
+  }));
 
   return (
     <div className="min-h-screen bg-black text-white pt-20 pb-12 px-8 max-w-6xl mx-auto">
@@ -202,13 +179,13 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                   {repoName}
                 </h1>
                 <span className="px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider bg-white/10 text-white border border-white/20">
-                  Private
+                  {repoData?.isPrivate ? "Private" : "Public"}
                 </span>
               </div>
               <div className="flex items-center gap-4 text-sm text-zinc-400">
                 <span className="flex items-center gap-1.5">
                   <GitBranch className="w-4 h-4" />
-                  main
+                  {repoData?.defaultBranch || "main"}
                 </span>
                 <span className="flex items-center gap-1.5 text-emerald-400">
                   <span className="w-2 h-2 rounded-full bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.8)] animate-pulse" />
@@ -362,7 +339,9 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                 <div className="p-3 bg-white/5 rounded-lg border border-white/5 flex items-center justify-between">
                   <div>
                     <p className="text-xs text-zinc-500 mb-0.5">Region</p>
-                    <p className="text-sm font-medium text-white">us-east-1</p>
+                    <p className="text-sm font-medium text-white">
+                      {repoData?.mappings?.[0]?.integration?.credentials?.region || "us-east-1"}
+                    </p>
                   </div>
                   <Server className="w-4 h-4 text-zinc-400" />
                 </div>
@@ -567,6 +546,55 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                         )}
                       </div>
                     )}
+                  </motion.div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === "Deployments" && (
+        <div className="space-y-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-xl font-bold text-white">Recent Deployments & PRs</h2>
+          </div>
+          {incidents.filter(i => i.actions && i.actions.length > 0).length === 0 ? (
+            <div className="bg-zinc-900/40 border border-white/5 rounded-xl p-12 text-center text-zinc-500">
+              No automated PRs or deployments found for this repository.
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {incidents.filter(i => i.actions && i.actions.length > 0).map(incident => {
+                const latestAction = incident.actions[0];
+                return (
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={incident.id + '-deployment'}
+                    className="bg-zinc-900/40 border border-white/5 rounded-xl p-6"
+                  >
+                    <div className="flex items-start justify-between">
+                      <div>
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="text-lg font-semibold text-white">Fix for: {incident.title}</h3>
+                          <span className={`px-2 py-0.5 rounded text-[10px] uppercase font-bold tracking-wider border ${latestAction.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20' : 'bg-blue-500/10 text-blue-400 border-blue-500/20'}`}>
+                            {latestAction.type === 'create_pr' ? 'Pull Request' : latestAction.type}
+                          </span>
+                        </div>
+                        <p className="text-sm text-zinc-400 mb-4">
+                          Status: {latestAction.status.replace("_", " ")}
+                        </p>
+                      </div>
+                      <div className="flex flex-col items-end gap-2">
+                        {latestAction.metadata?.prUrl && (
+                          <a href={latestAction.metadata.prUrl} target="_blank" rel="noreferrer" className="flex items-center gap-2 px-4 py-2 bg-white/10 hover:bg-white/20 text-white text-sm font-medium rounded-lg transition-all">
+                            <ExternalLink className="w-4 h-4" />
+                            View PR
+                          </a>
+                        )}
+                      </div>
+                    </div>
                   </motion.div>
                 );
               })}

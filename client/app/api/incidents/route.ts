@@ -17,6 +17,19 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "repoFullName is required" }, { status: 400 });
     }
 
+    const repository = await prisma.repository.findFirst({
+      where: { fullName: repoFullName },
+      include: {
+        mappings: {
+          include: {
+            integration: {
+              include: { credentials: true }
+            }
+          }
+        }
+      }
+    });
+
     const incidents = await prisma.incident.findMany({
       where: { repository: { fullName: repoFullName } },
       orderBy: { createdAt: "desc" },
@@ -26,7 +39,7 @@ export async function GET(req: NextRequest) {
       }
     });
 
-    return NextResponse.json({ incidents }, { status: 200 });
+    return NextResponse.json({ incidents, repository }, { status: 200 });
   } catch (error: any) {
     console.error("[Get Incidents API] Error:", error);
     return NextResponse.json({ error: "Internal Server Error", details: error.message }, { status: 500 });
