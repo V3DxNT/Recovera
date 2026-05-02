@@ -139,11 +139,17 @@ ${patch.changeSummary}
         }
       });
       
-      // Update Incident status
-      await prisma.incident.update({
-        where: { id: incident.id },
-        data: { status: "in_review" }
-      });
+      // Update Incident status explicitly to EXECUTED
+      const { transitionIncidentState } = await import("@/lib/incidents/workflow");
+      const { IncidentState } = await import("../../../../../../generated/prisma/client");
+      await transitionIncidentState(
+        incident.id, 
+        IncidentState.EXECUTED,
+        {
+          actionType: "open_pr",
+          details: `Opened PR ${result.prUrl}`
+        }
+      );
 
       return NextResponse.json({ success: true, prUrl: result.prUrl });
     } else {
