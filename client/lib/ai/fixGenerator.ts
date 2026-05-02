@@ -1,6 +1,6 @@
 import { generateObject } from 'ai';
 import { google } from '@ai-sdk/google';
-import { xai } from '@ai-sdk/xai';
+import { groq } from '@ai-sdk/groq';
 import { z } from 'zod';
 
 // Mocked interfaces for dependencies that are built in Steps 2, 3, and 4
@@ -35,7 +35,7 @@ export const fixOutputSchema = z.object({
 export type FixOutput = z.infer<typeof fixOutputSchema>;
 
 /**
- * Generates a fix patch for an incident using Gemini as primary, falling back to Grok.
+ * Generates a fix patch for an incident using Gemini as primary, falling back to Groq.
  */
 export async function generateFix(
   incident: MockIncident,
@@ -73,9 +73,10 @@ Please generate the fix diff, summary, and risk score.
 `;
 
   try {
-    // Try primary provider (Gemini 2.5 Pro or Flash, using 2.5-pro as it's best for coding)
+    // Try primary provider (Gemini 2.5 is state of the art)
+    const primaryModel = process.env.GEMINI_MODEL || 'gemini-2.5-pro';
     const result = await generateObject({
-      model: google('gemini-2.5-pro'),
+      model: google(primaryModel),
       system: systemPrompt,
       prompt: userPrompt,
       schema: fixOutputSchema,
@@ -83,15 +84,18 @@ Please generate the fix diff, summary, and risk score.
 
     return result.object;
   } catch (error) {
-    console.warn("Primary AI provider (Gemini) failed. Falling back to Grok.", error);
+    console.warn(`Primary AI provider (Gemini: ${process.env.GEMINI_MODEL}) failed. Falling back to Groq.`, error);
     
     try {
-      // Fallback to Grok (xAI)
+      // Fallback to Groq (Llama 3.3)
+      const fallbackModel = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
       const fallbackResult = await generateObject({
-        model: xai('grok-2-latest'),
+        model: groq(fallbackModel),
         system: systemPrompt,
         prompt: userPrompt,
         schema: fixOutputSchema,
+        // Groq often requires specific settings for structured output
+        // but @ai-sdk/groq handles most of it.
       });
 
       return fallbackResult.object;

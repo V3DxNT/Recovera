@@ -3,7 +3,15 @@
 // and building a comprehensive diagnostic report. It includes error handling to ensure 
 // that even in failure scenarios, a meaningful report is generated for auditing and review purposes.
 
-import { AgentInput, DiagnosticReport, AuditLogEntry, VerificationResult, AgentOutput, DecisionResult } from "./types";
+import {
+  AgentInput,
+  DiagnosticReport,
+  AuditLogEntry,
+  VerificationResult,
+  AgentOutput,
+  DecisionResult,
+  ResourceSnapshot,
+} from "./types";
 import { runRCA } from "./rca";
 import { decide } from "./decision-engine";
 import { verify } from "../verification/verifier";
@@ -12,6 +20,18 @@ import { handleFailure } from "./fallback-handler";
 
 // Public exports
 export type { AgentInput, DiagnosticReport, AuditLogEntry };
+
+/** Optional hooks injected by the backend (e.g. real AWS execute + state refetch). */
+export interface AgentRuntime {
+  executeAction?: (
+    input: AgentInput,
+    decision: DecisionResult,
+  ) => Promise<{
+    ok: boolean;
+    message: string;
+    postFixState: ResourceSnapshot;
+  }>;
+}
 
 export function toAuditLogEntry(report: DiagnosticReport, input: AgentInput): AuditLogEntry {
   return {
@@ -105,7 +125,10 @@ function getMockFixture(input: AgentInput): DiagnosticReport {
   };
 }
 
-export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
+export async function runAgent(
+  input: AgentInput,
+  runtime: AgentRuntime = {},
+): Promise<DiagnosticReport> {
   // 1. Mock check
   if (process.env.AGENT_MOCK === "true") {
     return getMockFixture(input);
@@ -140,14 +163,32 @@ export async function runAgent(input: AgentInput): Promise<DiagnosticReport> {
       evidence: []
     } : rcaResult as AgentOutput;
 
-    // 5. Verify
+    // 5. Verify (optional real execute + post-fix state via runtime.executeAction)
     let verification: VerificationResult;
     if (decision.path === "auto_fix") {
-      verification = await verify({
-        event: input.event,
-        resource: input.metadata.resource,
-        post_fix_state: input.resource_state // In a real system, we'd fetch the NEW state here. For now, use what we have or assume Person 1 handled state updates if delayed.
-      });
+      if (runtime.executeAction) {
+        const execResult = await runtime.executeAction(input, decision);
+        if (!execResult.ok) {
+          verification = {
+            resolved: false,
+            evidence: execResult.message,
+            checked_at: new Date().toISOString(),
+            status: "error",
+          };
+        } else {
+          verification = await verify({
+            event: input.event,
+            resource: input.metadata.resource,
+            post_fix_state: execResult.postFixState,
+          });
+        }
+      } else {
+        verification = await verify({
+          event: input.event,
+          resource: input.metadata.resource,
+          post_fix_state: input.resource_state,
+        });
+      }
     } else {
       verification = {
         resolved: null,

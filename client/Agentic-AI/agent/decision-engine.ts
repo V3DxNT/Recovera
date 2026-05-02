@@ -67,6 +67,18 @@ export function decide(output: AgentOutput | ParseError): DecisionResult {
     };
   }
 
+  // 6b. confidence >= 0.60 AND safetyClass === "safe" -> approval_required
+  // This closes the gap where safe actions with moderate confidence were being dropped to alert_only
+  if (validOutput.confidence >= CONFIDENCE_MIN_ACTION && safetyClass === "safe") {
+    return {
+      path: "approval_required",
+      action: validOutput.recommendedAction,
+      reason: "moderate_confidence_safe_action",
+      confidence: validOutput.confidence,
+      safety_class: safetyClass
+    };
+  }
+
   // 7. confidence >= 0.60 AND safetyClass === "needs_approval" -> approval_required
   if (validOutput.confidence >= CONFIDENCE_MIN_ACTION && safetyClass === "needs_approval") {
     return {

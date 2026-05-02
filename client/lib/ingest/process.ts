@@ -78,5 +78,6 @@ export async function processIngestPayload(params: {
     accepted: accepted.length,
     failed: failedIds.length,
     failedIds,
+    acceptedEvents: accepted,
   };
 }

@@ -54,3 +54,12 @@ export async function maybeRecordIngestAlert(input: {
   );
   return true;
 }
+export async function incrementMetric(name: string, tags: Record<string, string> = {}) {
+  await ensureDir();
+  const entry = {
+    metric: name,
+    tags,
+    ts: new Date().toISOString(),
+  };
+  await appendFile(METRICS_FILE, `${JSON.stringify(entry)}\n`, "utf-8");
+}

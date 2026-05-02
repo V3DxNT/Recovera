@@ -45,26 +45,45 @@ function containsHighRiskDomain(patchDiff: string): boolean {
   return false;
 }
 
+let cachedBreaker: boolean | null = null;
+let lastFetch = 0;
+
+export async function getCircuitBreaker() {
+  const now = Date.now();
+
+  if (cachedBreaker === null || now - lastFetch > 5000) {
+    const setting = await prisma.systemSetting.findUnique({
+      where: { key: "MANUAL_CIRCUIT_BREAKER" }
+    });
+
+    cachedBreaker = setting?.value === "true";
+    lastFetch = now;
+  }
+
+  return cachedBreaker;
+}
+
 /**
  * Checks if the global circuit breaker should trip.
  * Queries the last 1 hour of SafetyAuditLogs.
  */
 async function checkCircuitBreaker(): Promise<boolean> {
+  const manualOverride = await getCircuitBreaker();
+  if (manualOverride) return true;
+
   const oneHourAgo = new Date(Date.now() - CIRCUIT_BREAKER_WINDOW);
   
   const recentLogs = await prisma.safetyAuditLog.findMany({
     where: { createdAt: { gte: oneHourAgo } },
-    select: { decision: true }
+    select: { decision: true, status: true }
   });
 
   if (recentLogs.length < MIN_SAMPLES_FOR_CIRCUIT_BREAKER) {
     return false; // Not enough data to trip
   }
 
-  const blockedCount = recentLogs.filter(log => log.decision === "BLOCK_AND_ALERT").length;
-  const failureRate = blockedCount / recentLogs.length;
-
-  return failureRate >= CIRCUIT_BREAKER_THRESHOLD;
+  const recentFailures = recentLogs.filter(log => (log as any).status === "FAILED_AFTER_APPLY");
+  return recentFailures.length >= 5;
 }
 
 /**
@@ -78,6 +97,7 @@ export async function evaluatePolicy(req: PolicyEvaluationRequest): Promise<Poli
   // 1. Check Global Circuit Breaker
   const isCircuitBreakerTripped = await checkCircuitBreaker();
   if (isCircuitBreakerTripped) {
+    console.error("[SAFETY] 🚨 CIRCUIT BREAKER ACTIVE: High failure rate detected across fleet.");
     reasons.push("GLOBAL_CIRCUIT_BREAKER_TRIPPED");
     decision = "BLOCK_AND_ALERT";
     riskScore += 10.0; // Max risk
