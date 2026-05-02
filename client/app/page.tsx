@@ -4,7 +4,7 @@ import DashboardVisual from "@/components/DashboardVisual";
 import PipelineFlow from "@/components/PipelineFlow";
 import FeaturesGrid from "@/components/FeaturesGrid";
 import CodeDiffVisual from "@/components/CodeDiffVisual";
-import Testimonials from "@/components/Testimonials";
+
 import FinalCTA from "@/components/FinalCTA";
 import Footer from "@/components/Footer";
 
@@ -17,7 +17,7 @@ export default function Home() {
         <PipelineFlow />
         <CodeDiffVisual />
         <FeaturesGrid />
-        <Testimonials />
+        
         <FinalCTA />
       </main>
 
