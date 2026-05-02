@@ -45,8 +45,6 @@ interface ProvisioningStep {
  * 
  * Phase 2 — Provisions AWS infrastructure and saves instance-to-repo mappings.
  * Only subscribes the log groups that the user explicitly mapped.
- * Returns step-by-step provisioning details with resource names on both
- * success and failure.
  */
 export async function POST(req: Request) {
   const createdResources: string[] = [];
@@ -257,119 +255,106 @@ export async function POST(req: Request) {
     }
     }
 
-    // 6. Save Integration record + Mappings
-    try {
-      const integration = await prisma.integration.upsert({
+    // 6. Save Integration record
+    const integration = await prisma.integration.upsert({
+      where: {
+        userId_provider_credentialId: {
+          userId: user.id,
+          provider: "aws",
+          credentialId: credential.id,
+        },
+      },
+      update: {
+        s3BucketName: bucketName,
+        firehoseArn,
+        status: "active",
+        errorMessage: null,
+        lastSyncAt: new Date(),
+      },
+      create: {
+        userId: user.id,
+        credentialId: credential.id,
+        provider: "aws",
+        s3BucketName: bucketName,
+        firehoseArn,
+        status: "active",
+        lastSyncAt: new Date(),
+      },
+    });
+
+    // 7. Save InstanceMappings
+    for (const mapping of mappings) {
+      // 7.1 Ensure Repository record exists
+      const repoName = mapping.repoFullName.split("/")[1] || mapping.repoFullName;
+      const repository = await prisma.repository.upsert({
         where: {
-          userId_provider_credentialId: {
+          userId_fullName: {
             userId: user.id,
-            provider: "aws",
-            credentialId: credential.id,
+            fullName: mapping.repoFullName,
           },
         },
         update: {
-          s3BucketName: bucketName,
-          firehoseArn,
-          status: "active",
-          errorMessage: null,
-          provisioningDetails: JSON.stringify(steps),
-          lastSyncAt: new Date(),
+          name: repoName,
         },
         create: {
           userId: user.id,
-          credentialId: credential.id,
-          provider: "aws",
-          s3BucketName: bucketName,
-          firehoseArn,
-          status: "active",
-          provisioningDetails: JSON.stringify(steps),
-          lastSyncAt: new Date(),
+          fullName: mapping.repoFullName,
+          name: repoName,
+          htmlUrl: `https://github.com/${mapping.repoFullName}`,
         },
       });
 
-      // 7. Save InstanceMappings
-      for (const mapping of mappings) {
-        // 7.1 Ensure Repository record exists
-        const repoName = mapping.repoFullName.split("/")[1] || mapping.repoFullName;
-        const repository = await prisma.repository.upsert({
-          where: {
-            userId_fullName: {
-              userId: user.id,
-              fullName: mapping.repoFullName,
-            },
-          },
-          update: {
-            name: repoName,
-          },
-          create: {
-            userId: user.id,
-            fullName: mapping.repoFullName,
-            name: repoName,
-            htmlUrl: `https://github.com/${mapping.repoFullName}`,
-          },
-        });
-
-        // 7.2 Create/Update mapping
-        await prisma.instanceMapping.upsert({
-          where: {
-            integrationId_logGroupName_resourceId: {
-              integrationId: integration.id,
-              logGroupName: mapping.logGroupName,
-              resourceId: mapping.resourceId || "global",
-            },
-          },
-          update: {
-            repositoryId: repository.id,
-            repoFullName: mapping.repoFullName,
-            resourceId: mapping.resourceId,
-            resourceType: mapping.resourceType,
-            resourceLabel: mapping.resourceLabel,
-          },
-          create: {
+      // 7.2 Create/Update mapping
+      await prisma.instanceMapping.upsert({
+        where: {
+          integrationId_logGroupName_resourceId: {
             integrationId: integration.id,
-            repositoryId: repository.id,
-            repoFullName: mapping.repoFullName,
             logGroupName: mapping.logGroupName,
-            resourceId: mapping.resourceId,
-            resourceType: mapping.resourceType,
-            resourceLabel: mapping.resourceLabel,
+            resourceId: mapping.resourceId || "global",
           },
-        });
-      }
-
-      markStep("db", "success", `Integration: ${integration.id}`);
-
-      return NextResponse.json({
-        success: true,
-        integrationId: integration.id,
-        bucketName,
-        mappingCount: mappings.length,
-        provisioningSteps: steps,
+        },
+        update: {
+          repositoryId: repository.id,
+          repoFullName: mapping.repoFullName,
+          resourceId: mapping.resourceId,
+          resourceType: mapping.resourceType,
+          resourceLabel: mapping.resourceLabel,
+        },
+        create: {
+          integrationId: integration.id,
+          repositoryId: repository.id,
+          repoFullName: mapping.repoFullName,
+          logGroupName: mapping.logGroupName,
+          resourceId: mapping.resourceId,
+          resourceType: mapping.resourceType,
+          resourceLabel: mapping.resourceLabel,
+        },
       });
-
-    } catch (err: any) {
-      markStep("db", "failed", undefined, err.message);
-      throw err;
     }
 
+    return NextResponse.json({
+      success: true,
+      integrationId: integration.id,
+      bucketName,
+      subscribedGroups,
+      mappingCount: mappings.length,
+    });
   } catch (error: any) {
     console.error("Provisioning Error:", error);
-
-    const failedStep = getFailedStep();
 
     // ROLLBACK FEATURE: If anything goes wrong, attempt to cleanup AWS resources
     try {
       if (credentialId) {
         const user = await prisma.user.findFirst({
-           where: { cloudCredentials: { some: { id: credentialId } } }
+          where: { cloudCredentials: { some: { id: credentialId } } }
         });
         const credential = await prisma.cloudCredential.findUnique({ where: { id: credentialId } });
 
         if (credential && user) {
           const region = credential.region || "us-east-1";
-          
+
           console.log("Initiating automatic rollback of AWS resources...");
-          
+
           if (createdResources.includes("cloudwatch") && uniqueLogGroups.length > 0) {
             await removeSubscriptionFilters(credential, uniqueLogGroups);
           }
@@ -382,15 +367,15 @@ export async function POST(req: Request) {
           if (createdResources.includes("s3") && bucketName) {
             await deleteLogBucket(credential, bucketName);
           }
-          
+
           console.log("Rollback completed.");
         }
       }
     } catch (rollbackError) {
       console.error("Rollback failed:", rollbackError);
     }
-    
-    // Update integration status to failed with step details
+
+    // Update integration status to failed
     try {
       const session = await getServerSession(authOptions);
       if (session?.user?.email) {
@@ -398,11 +383,7 @@ export async function POST(req: Request) {
         if (user) {
           await prisma.integration.updateMany({
             where: { userId: user.id, provider: "aws" },
-            data: {
-              status: "failed",
-              errorMessage: error.message,
-              provisioningDetails: JSON.stringify(steps),
-            }
+            data: { status: "failed", errorMessage: error.message }
           });
         }
       }
@@ -411,14 +392,7 @@ export async function POST(req: Request) {
     }
 
     return NextResponse.json(
-      {
-        error: `Provisioning failed at step "${failedStep?.label || "unknown"}". Resources were rolled back.`,
-        failedStep: failedStep?.step,
-        failedStepLabel: failedStep?.label,
-        failedResourceName: failedStep?.resourceName,
-        stepError: failedStep?.error,
-        provisioningSteps: steps,
-      },
+      { error: `Provisioning failed. Resources were rolled back. Error: ${error.message}` },
       { status: 500 }
     );
   }

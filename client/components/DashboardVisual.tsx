@@ -33,7 +33,7 @@ export default function DashboardVisual() {
   }, []);
 
   return (
-    <section className="py-24 bg-black border-y border-white/[0.05]">
+    <section id="how-it-works" className="py-24 bg-black border-y border-white/[0.05]">
       <div className="container mx-auto px-6 max-w-6xl">
         <div className="flex flex-col items-center mb-16">
           <h2 className="text-3xl font-medium text-white mb-4 tracking-tight">The engine in action.</h2>

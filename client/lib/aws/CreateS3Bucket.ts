@@ -8,19 +8,14 @@ export async function createLogBucket(credential: CloudCredential, userId: strin
     const sanitizedId = userId.toLowerCase().replace(/[^a-z0-9]/g, "-");
     const sanitizedRegion = region.toLowerCase().replace(/[^a-z0-9]/g, "-");
     
-    // Add a short random suffix to avoid global uniqueness collisions
-    const suffix = Math.random().toString(36).substring(2, 8);
-    let bucketName = `recovera-${sanitizedId}-${sanitizedRegion}-${suffix}`;
+    let bucketName = `recovera-${sanitizedId}-${sanitizedRegion}`;
     
-    // Collapsed consecutive hyphens and ensure it doesn't start/end with one
-    bucketName = bucketName.replace(/-+/g, "-").replace(/^-|-$/g, "");
-
     // Ensure name is within 63 characters
     if (bucketName.length > 63) {
-        // Keep the suffix intact if possible
-        const prefix = bucketName.substring(0, 63 - suffix.length - 1).replace(/-$/, "");
-        bucketName = `${prefix}-${suffix}`;
+        bucketName = bucketName.substring(0, 63);
     }
+    // Remove trailing hyphens if any
+    bucketName = bucketName.replace(/-+$/, "");
 
     const s3 = new S3Client({
         region,
@@ -30,9 +25,6 @@ export async function createLogBucket(credential: CloudCredential, userId: strin
             ...(credential.sessionToken && { sessionToken: decrypt(credential.sessionToken) })
         },
     });
-
-    console.log(`[AWS] Attempting to create S3 bucket: ${bucketName} in region: ${region}`);
-
 
     try {
         await s3.send(new CreateBucketCommand({
@@ -66,10 +58,7 @@ export async function deleteLogBucket(credential: CloudCredential, bucketName: s
 
     try {
         await s3.send(new DeleteBucketCommand({ Bucket: bucketName }));
-    } catch (error: any) {
-        // If the bucket doesn't exist, we can ignore it during cleanup
-        if (error.name !== "NoSuchBucket" && error.name !== "NotFound") {
-            console.warn(`Failed to delete bucket ${bucketName} during rollback:`, error.message);
-        }
+    } catch (error) {
+        console.warn(`Failed to delete bucket ${bucketName} during rollback:`, error);
     }
 }
