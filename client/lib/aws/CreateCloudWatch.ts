@@ -80,8 +80,11 @@ export async function removeSubscriptionFilters(
                 logGroupName,
                 filterName: `Recovera-LogStream-Filter`,
             }));
-        } catch (error) {
-            console.warn(`Failed to remove subscription filter from "${logGroupName}" during rollback:`, error);
+        } catch (error: any) {
+            // If the log group or filter doesn't exist, we can ignore it during cleanup
+            if (error.name !== "ResourceNotFoundException") {
+                console.warn(`Failed to remove subscription filter from "${logGroupName}" during rollback:`, error.message);
+            }
         }
     }
 }
