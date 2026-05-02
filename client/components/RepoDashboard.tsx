@@ -330,7 +330,7 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
             <a
               href={repoData?.htmlUrl || `https://github.com/${repoName}`}
               target="_blank"
-              rel="noreferrer"
+              rel="noopener noreferrer"
               className="px-4 py-2 bg-white text-black hover:bg-zinc-200 rounded-lg text-sm font-medium transition-all flex items-center gap-2 shadow-[0_0_15px_rgba(255,255,255,0.1)]"
             >
               <ExternalLink className="w-4 h-4" />
