@@ -141,8 +141,8 @@ model Incident {
   repositoryId  String
   fingerprint   String
   title         String
-  severity      String          // "low" | "medium" | "high" | "critical"
-  status        String          // "open" | "investigating" | "mitigated" | "resolved" | "ignored"
+  severity      String          @default("medium") // "low" | "medium" | "high" | "critical"
+  status        String          @default("open")   // "open" | "investigating" | "mitigated" | "resolved" | "ignored"
   firstSeenAt   DateTime        @default(now())
   lastSeenAt    DateTime        @default(now())
   eventCount    Int             @default(1)
@@ -152,6 +152,7 @@ model Incident {
 
   repository    Repository      @relation(fields: [repositoryId], references: [id], onDelete: Cascade)
   events        IncidentEvent[]
+  patches       PatchArtifact[]
 
   @@unique([repositoryId, fingerprint])
   @@index([status, severity])
@@ -182,4 +183,18 @@ model DetectionAudit {
   createdAt     DateTime @default(now())
 
   @@index([eventId])
+}
+
+model PatchArtifact {
+  id               String   @id @default(cuid())
+  incidentId       String
+  patchDiff        String   @db.Text
+  changeSummary    String   @db.Text
+  riskScore        Float
+  validationStatus String   @default("pending") // pending, passed, failed
+  validationLogs   String?  @db.Text
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  incident         Incident @relation(fields: [incidentId], references: [id], onDelete: Cascade)
 }

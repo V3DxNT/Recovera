@@ -31,7 +31,7 @@ export async function runRCA(input: AgentInput): Promise<AgentOutput | ParseErro
   // Parse output
   const parsed = parseAgentOutput(rawResponse);
   
-  if (parsed.kind === "ParseError") {
+  if ("kind" in parsed && parsed.kind === "ParseError") {
     return parsed;
   }
 

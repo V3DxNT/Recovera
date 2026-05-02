@@ -44,7 +44,7 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export default function InstanceSelectModal({
-  isOpen, onClose, repoName, repoFullName, credentialId
+  isOpen, onClose, repoName, repoFullName, credentialId, onSuccess
 }: InstanceSelectModalProps) {
   const [step, setStep] = useState<Step>("discovering");
   const [resources, setResources] = useState<AwsResource[]>([]);
