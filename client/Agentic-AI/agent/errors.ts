@@ -22,9 +22,9 @@ export class LLMError extends Error {
 }
 
 export class AgentError extends Error {
-  kind = "AgentError" as const;
+  kind: string = "AgentError";
 }
 
 export class VerificationError extends AgentError {
-  kind = "VerificationError" as const;
+  kind = "VerificationError";
 }
