@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-import prisma from "@/lib/prisma";
+import { prisma } from "@/lib/prisma";
 import { generateFix, MockRCA, MockCodeContext } from "@/lib/ai/fixGenerator";
 import { validatePatch } from "@/lib/ai/patchValidator";
 import { runSandboxValidation } from "@/lib/sandbox/runner";
