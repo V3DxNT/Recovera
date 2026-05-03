@@ -1,6 +1,7 @@
 import { prisma } from "../prisma";
 import { runRCA } from "../../Agentic-AI/agent/rca";
 import { AgentInput, AgentOutput, ParseError } from "../../Agentic-AI/agent/types";
+import { searchCode } from "../retrieval/search";
 
 export interface RCARequest {
   incidentId: string;
@@ -31,14 +32,20 @@ export async function analyzeRootCause(req: RCARequest): Promise<RCAResult> {
 
   // 1. Gather logs and stack traces
   const logs = incident.events.map(e => e.rawExcerpt).join("\n");
-  
+
   // 2. Assemble context payload 
-  // STUB for Step 4: Code retrieval
-  const retrievedCodeContext = "/* Code retrieval stub */";
+  // Step 4: Code retrieval
+  console.log(`[RCA] Searching for code context for incident ${incident.id}...`);
+  const query = `${logs}\n${incident.title}`;
+  const searchResults = await searchCode(query, incident.repository.fullName, 10);
   
+  const retrievedCodeContext = searchResults.length > 0 
+    ? searchResults.map(r => `File: ${r.filePath}\nLines: ${r.startLine}-${r.endLine}\nContent:\n${r.content}`).join('\n\n')
+    : "/* No relevant code snippets found */";
+
   // STUB for Deployment history
   const deploymentContext = "/* Deployment metadata stub */";
-  
+
   // STUB for Historical nearest incidents
   const historicalContext = "/* History stub */";
 
@@ -90,7 +97,7 @@ export async function analyzeRootCause(req: RCARequest): Promise<RCAResult> {
       where: { incidentId: incident.id },
       orderBy: { version: "desc" }
     });
-    
+
     const nextVersion = latestRca ? latestRca.version + 1 : 1;
 
     await prisma.incidentRca.create({

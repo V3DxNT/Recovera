@@ -52,7 +52,7 @@ export async function getCircuitBreaker() {
   const now = Date.now();
 
   if (cachedBreaker === null || now - lastFetch > 5000) {
-    const setting = await prisma.systemSetting.findUnique({
+    const setting = await (prisma as any).systemSetting.findUnique({
       where: { key: "MANUAL_CIRCUIT_BREAKER" }
     });
 
@@ -75,7 +75,7 @@ async function checkCircuitBreaker(): Promise<boolean> {
   
   const recentLogs = await prisma.safetyAuditLog.findMany({
     where: { createdAt: { gte: oneHourAgo } },
-    select: { decision: true, status: true }
+    select: { decision: true, status: true } as any
   });
 
   if (recentLogs.length < MIN_SAMPLES_FOR_CIRCUIT_BREAKER) {

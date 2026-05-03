@@ -1,5 +1,5 @@
 import { prisma as defaultPrisma } from "../prisma";
-import { IncidentState } from "../../generated/prisma/client";
+import { IncidentState } from "../../generated/prisma/enums";
 
 /**
  * Transitions an incident to a new state explicitly, ensuring auditability.

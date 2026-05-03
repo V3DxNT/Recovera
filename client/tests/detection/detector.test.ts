@@ -156,19 +156,18 @@ describe("Detector & Brain Bridge", () => {
 
     // Verify idempotency check
     expect(mockFindUnique).toHaveBeenCalledTimes(1);
-    
+
     // Verify incident upsert
     expect(mockIncidentUpsert).toHaveBeenCalledTimes(1);
     expect(mockEventUpsert).toHaveBeenCalledTimes(1);
-    
+
     // Verify runAgent invocation
     expect(runAgent).toHaveBeenCalledTimes(1);
-    
+
     const agentInput = (runAgent as jest.Mock).mock.calls[0][0];
     expect(agentInput.event).toBe("S3_PUBLIC");
     expect(agentInput.incident_id).toBe("inc_123");
     expect((runAgent as jest.Mock).mock.calls[0][1]).toEqual({});
-    
     // Verify transaction ran and Audit was upserted
     expect(mockTransaction).toHaveBeenCalledTimes(1);
     expect(mockAuditUpsert).toHaveBeenCalledTimes(1);
@@ -202,12 +201,12 @@ describe("Detector & Brain Bridge", () => {
 
     // Verify it checked the db
     expect(mockFindUnique).toHaveBeenCalledTimes(1);
-    
+
     // Verify it skipped upsert and runAgent
     expect(mockIncidentUpsert).toHaveBeenCalledTimes(0);
     expect(runAgent).toHaveBeenCalledTimes(0);
   });
-  
+
   test("processNormalizedEvent - failed event retries processing", async () => {
     const log = {
       eventId: "evt_3",

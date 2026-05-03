@@ -2,11 +2,12 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as crypto from "crypto";
 import { prisma } from "../prisma";
-import { IncidentState } from "../../generated/prisma/client";
+import { IncidentState } from "../../generated/prisma/enums";
 import { NormalizedLogEvent } from "../ingest/types";
 import { incrementMetric } from "../ingest/metrics";
 import { storeEventToS3 } from "../ingest/store";
 import { runAgent } from "../../Agentic-AI/agent";
+import { runFullPipeline } from "../ai/orchestrator";
 import {
   AgentInput,
   EventType,
@@ -15,6 +16,7 @@ import {
 } from "../../Agentic-AI/agent/types";
 import { fetchResourceState } from "../aws/actions/fetchState";
 import { createAwsAgentRuntime } from "../aws/actions/executor";
+
 const BASE_DIR = path.join(process.cwd(), ".recovera-ingest");
 const QUEUE_FILE = path.join(BASE_DIR, "queue.ndjson");
 
@@ -245,10 +247,26 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
   });
 
   let agentStatus: IncidentStatus = "pending";
-  if (incident.status === IncidentState.DETECTED || incident.status === IncidentState.QUEUED) agentStatus = "pending";
-  if (incident.status === IncidentState.PROCESSING || incident.status === IncidentState.ANALYZED) agentStatus = "running";
-  if (incident.status === IncidentState.VERIFIED || incident.status === IncidentState.CLOSED)
+  if (
+    incident.status === IncidentState.DETECTED ||
+    incident.status === IncidentState.QUEUED
+  )
+    agentStatus = "pending";
+  if (
+    incident.status === IncidentState.PROCESSING ||
+    incident.status === IncidentState.ANALYZED
+  )
+    agentStatus = "running";
+  if (
+    incident.status === IncidentState.VERIFIED ||
+    incident.status === IncidentState.CLOSED
+  )
     agentStatus = "done";
+
+  let state: ResourceSnapshot = { type: log.resourceType, config: {} };
+  if (log.messageParsed && typeof log.messageParsed === "object") {
+    state.config = log.messageParsed as Record<string, unknown>;
+  }
 
   const parsedConfig =
     log.messageParsed && typeof log.messageParsed === "object"
@@ -302,7 +320,7 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
     const report = await runAgent(agentInput, runtime);
     const latency = Date.now() - startTime;
 
-    await prisma.$transaction(async (tx) => {
+    await prisma.$transaction(async (tx: any) => {
       await tx.incidentEvent.update({
         where: { id: incidentEvent.id },
         data: { processingStatus: "processed" },
@@ -363,6 +381,11 @@ export async function processNormalizedEvent(log: NormalizedLogEvent) {
           version: (latestRca?.version ?? 0) + 1,
         },
       });
+    });
+
+    // Trigger the full pipeline (Steps 3-7) in the background
+    runFullPipeline(incident.id).catch(err => {
+      console.error(`[Detector] Orchestrator failed for incident ${incident.id}:`, err);
     });
 
     return report;
