@@ -2,7 +2,7 @@ import * as fs from "fs/promises";
 import * as path from "path";
 import * as crypto from "crypto";
 import { prisma } from "../prisma";
-import { IncidentState } from "../../generated/prisma/client";
+import { IncidentState } from "../../generated/prisma/enums";
 import { NormalizedLogEvent } from "../ingest/types";
 import { incrementMetric } from "../ingest/metrics";
 import { storeEventToS3 } from "../ingest/store";

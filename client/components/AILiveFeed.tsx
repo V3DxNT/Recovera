@@ -6,7 +6,7 @@ import { Brain, Shield, Zap, CheckCircle, AlertTriangle, Terminal, Clock } from 
 
 type Activity = {
   id: string;
-  type: 'safety_audit' | 'action';
+  type: 'safety_audit' | 'action' | 'rca';
   status: string;
   label: string;
   details: string | null;
@@ -43,9 +43,10 @@ export default function AILiveFeed({ repoFullName }: { repoFullName: string }) {
       if (status === 'BLOCK_AND_ALERT') return <Shield className="w-4 h-4 text-red-400" />;
       return <Shield className="w-4 h-4 text-amber-400" />;
     }
+    if (type === 'rca') return <Brain className="w-4 h-4 text-purple-400" />;
     if (status === 'opened') return <Zap className="w-4 h-4 text-blue-400" />;
     if (status === 'failed') return <AlertTriangle className="w-4 h-4 text-red-400" />;
-    return <Brain className="w-4 h-4 text-purple-400" />;
+    return <Zap className="w-4 h-4 text-blue-400" />;
   };
 
   return (
@@ -61,7 +62,7 @@ export default function AILiveFeed({ repoFullName }: { repoFullName: string }) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[400px] scrollbar-thin scrollbar-thumb-white/10">
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 max-h-[600px] scrollbar-thin scrollbar-thumb-white/10">
         {loading && activities.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-zinc-500 gap-3">
             <Terminal className="w-8 h-8 animate-pulse" />
@@ -105,6 +106,20 @@ export default function AILiveFeed({ repoFullName }: { repoFullName: string }) {
                             Reasons: {activity.details}
                           </span>
                         )}
+                      </div>
+                    ) : activity.type === 'rca' ? (
+                      <div className="flex flex-col gap-1">
+                        <span className="text-purple-300 font-medium italic">"Thinking..."</span>
+                        <p className="text-[10px] text-zinc-500 line-clamp-3">
+                          {(() => {
+                            try {
+                              const parsed = JSON.parse(activity.details || "{}");
+                              return parsed.rootCauseSummary || activity.details;
+                            } catch {
+                              return activity.details;
+                            }
+                          })()}
+                        </p>
                       </div>
                     ) : (
                       <div className="flex flex-col gap-1">

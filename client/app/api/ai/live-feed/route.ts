@@ -16,11 +16,11 @@ export async function GET(req: Request) {
         id, 
         'safety_audit' as type, 
         decision as status, 
-        actionType as label, 
-        reasonCodes as details, 
+        "actionType" as label, 
+        "reasonCodes" as details, 
         "createdAt" 
       FROM "SafetyAuditLog" 
-      WHERE "incidentId" IN (SELECT id FROM "Incident" WHERE "repositoryId" = (SELECT id FROM "Repository" WHERE "fullName" = ${repoFullName}))
+      WHERE "incidentId" IN (SELECT id FROM "Incident" WHERE "repositoryId" = (SELECT id FROM "Repository" WHERE "fullName" = ${repoFullName} OR "name" = ${repoFullName}))
       ORDER BY "createdAt" DESC 
       LIMIT 10)
       
@@ -30,16 +30,30 @@ export async function GET(req: Request) {
         id, 
         'action' as type, 
         status, 
-        actionType as label, 
+        "actionType" as label, 
         "failureReason" as details, 
         "createdAt" 
       FROM "IncidentAction" 
-      WHERE "incidentId" IN (SELECT id FROM "Incident" WHERE "repositoryId" = (SELECT id FROM "Repository" WHERE "fullName" = ${repoFullName}))
+      WHERE "incidentId" IN (SELECT id FROM "Incident" WHERE "repositoryId" = (SELECT id FROM "Repository" WHERE "fullName" = ${repoFullName} OR "name" = ${repoFullName}))
+      ORDER BY "createdAt" DESC 
+      LIMIT 10)
+
+      UNION ALL
+
+      (SELECT 
+        id, 
+        'rca' as type, 
+        'analyzed' as status, 
+        'Root Cause Analysis' as label, 
+        "rcaPayload" as details, 
+        "createdAt" 
+      FROM "IncidentRca" 
+      WHERE "incidentId" IN (SELECT id FROM "Incident" WHERE "repositoryId" = (SELECT id FROM "Repository" WHERE "fullName" = ${repoFullName} OR "name" = ${repoFullName}))
       ORDER BY "createdAt" DESC 
       LIMIT 10)
       
       ORDER BY "createdAt" DESC
-      LIMIT 15
+      LIMIT 20
     `;
 
     return NextResponse.json({ activities });

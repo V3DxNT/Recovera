@@ -431,23 +431,10 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
               </div>
             </motion.div>
             
-            {/* AI Live Feed */}
+            {/* Environment Details (Moved Up) */}
             <motion.div
               initial={{ opacity: 0, x: 20 }}
               animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.3 }}
-              className="lg:col-span-1"
-            >
-              <AILiveFeed repoFullName={repoName} />
-            </motion.div>
-          </div>
-
-          {/* Environment Details Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Environment Details */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.3 }}
               className="lg:col-span-1 bg-zinc-900/40 border border-white/5 rounded-xl p-6 flex flex-col"
             >
@@ -484,6 +471,19 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                   <Server className="w-4 h-4 text-zinc-400" />
                 </div>
               </div>
+            </motion.div>
+          </div>
+
+          {/* Environment Details Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* AI Live Feed (Enlarged) */}
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="lg:col-span-3"
+            >
+              <AILiveFeed repoFullName={repoName} />
             </motion.div>
           </div>
 
@@ -698,6 +698,54 @@ export default function RepoDashboard({ repoName }: { repoName: string }) {
                             View PR
                           </a>
                         )}
+
+                        <button
+                          onClick={() => {
+                            const el = document.getElementById(`brain-${incident.id}`);
+                            if (el) el.classList.toggle('hidden');
+                          }}
+                          className="flex items-center gap-2 px-3 py-1.5 text-zinc-500 hover:text-purple-400 text-xs font-medium transition-all"
+                        >
+                          <Brain className="w-3 h-3" />
+                          {incident.rcaVersions && incident.rcaVersions.length > 0 ? "Show AI Reasoning" : "No Analysis Yet"}
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* AI Brain / Thinking Section */}
+                    <div id={`brain-${incident.id}`} className="hidden mt-6 pt-6 border-t border-white/5">
+                      <div className="flex items-start gap-4">
+                        <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center text-purple-400 border border-purple-500/20 shrink-0">
+                          <Brain className="w-5 h-5" />
+                        </div>
+                        <div className="flex-1 space-y-4">
+                          <div>
+                            <h4 className="text-xs font-bold text-purple-400 uppercase tracking-widest mb-1">Root Cause Analysis</h4>
+                            <p className="text-sm text-zinc-300 leading-relaxed bg-white/5 p-3 rounded-lg border border-white/5">
+                              {(() => {
+                                const raw = (incident as any).latestDiagnosis?.rootCause || (incident.rcaVersions?.[0]?.rcaPayload);
+                                if (!raw) return "Analyzing system state and logs to determine root cause...";
+                                try {
+                                  const parsed = JSON.parse(raw);
+                                  return parsed.rootCauseSummary || raw;
+                                } catch {
+                                  return raw;
+                                }
+                              })()}
+                            </p>
+                          </div>
+
+                          <div className="flex items-center gap-4 text-[10px] text-zinc-500 font-mono">
+                            <span className="flex items-center gap-1">
+                              <Zap className="w-3 h-3" />
+                              Strategy: AUTO_DETECT
+                            </span>
+                            <span className="flex items-center gap-1">
+                              <Shield className="w-3 h-3" />
+                              Risk: Low
+                            </span>
+                          </div>
+                        </div>
                       </div>
                     </div>
 

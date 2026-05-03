@@ -6,7 +6,7 @@ import { google } from '@ai-sdk/google';
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
   const { embedding } = await embed({
-    model: google('text-embedding-004'), // or 'models/embedding-001'
+    model: google.textEmbeddingModel('text-embedding-004'),
     value: text,
   });
   return embedding;

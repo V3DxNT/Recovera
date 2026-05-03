@@ -5,6 +5,7 @@ import { runSandboxValidation } from '../sandbox/runner';
 import { evaluatePolicy } from '../safety/policyEngine';
 import { createPullRequest } from '../github/prCreator';
 import { prisma } from '../prisma';
+import { IncidentState } from '../../generated/prisma/enums';
 
 export async function runFullPipeline(incidentId: string) {
   console.log(`[Orchestrator] Starting full pipeline for incident ${incidentId}...`);
@@ -38,7 +39,7 @@ export async function runFullPipeline(incidentId: string) {
 
     // Mock code context for now if not fully populated by RCA
     const context = rcaOutput.likelyFiles.map(f => ({
-      filePath: f,
+      path: typeof f === 'string' ? f : (f as any).path,
       content: "/* Content fetched from retrieval layer in RCA */"
     }));
 
@@ -130,7 +131,7 @@ export async function runFullPipeline(incidentId: string) {
         });
         await prisma.incident.update({
           where: { id: incidentId },
-          data: { status: "in_review" }
+          data: { status: IncidentState.ANALYZED } // Using ANALYZED as a proxy for in_review
         });
       } else {
         console.error(`[Orchestrator] PR creation failed: ${prResult.error}`);
